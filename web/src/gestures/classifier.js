@@ -217,20 +217,22 @@ export function classifyGesture({
 
   // =================================================================
   // PRIORITY 1: Pinch gesture near eyes/face (Glasses / Discord Mod)
-  // Only checked for single hand or distinct pinch near eye level
+  // Checked for any visible hand (1 or 2) — stops at first qualifying pinch.
   // =================================================================
-  if (hasFace && handLandmarksList.length === 1) {
-    const hand = handLandmarksList[0];
-    const { isPinch, ratio } = detectPinch(hand);
-    signals.pinchRatio = ratio;
-    if (isPinch) {
-      signals.isPinch = true;
-      const handC = landmarksCenter(hand);
-      const faceDist = dist2D(handC, headCenter);
-      // Specifically near eye or cheek level (not below mouth)
-      if (faceDist < 0.28 && handC.y < mouthPoint.y) {
-        detected = "glasses";
-        signals.confidence = 96;
+  if (hasFace) {
+    for (const hand of handLandmarksList) {
+      const { isPinch, ratio } = detectPinch(hand);
+      signals.pinchRatio = ratio;
+      if (isPinch) {
+        signals.isPinch = true;
+        const handC = landmarksCenter(hand);
+        const faceDist = dist2D(handC, headCenter);
+        // Specifically near eye or cheek level (not below mouth)
+        if (faceDist < 0.28 && handC.y < mouthPoint.y) {
+          detected = "glasses";
+          signals.confidence = 96;
+          break;
+        }
       }
     }
   }

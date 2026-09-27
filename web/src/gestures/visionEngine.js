@@ -8,7 +8,7 @@ export class HamsterVisionEngine {
     this.poseLandmarker = null;
     this.isReady = false;
     this.initError = null;
-    this.smoother = new TemporalSmoother(12, 6);
+    this.smoother = new TemporalSmoother(10, 6);
     this.lastFrameTime = 0;
     this.fps = 0;
   }
@@ -149,10 +149,38 @@ export class HamsterVisionEngine {
 
     const { yawDeg, pitchDeg } = this.calculateHeadAngles(faceLandmarks);
 
+    // Build a compact face landmark array using only eye-level and nose landmarks.
+    // The full 478-point FaceLandmarker result includes jaw, chin, and neck which
+    // pull landmarksCenter() ~10-12% down the frame compared to the true eye/nose
+    // center. That biased headCenter caused fist_by_head (dy check), shy, and
+    // thinking distance checks to miss gestures performed at the correct position.
+    //
+    // Index 13 MUST be the mouth landmark (upper inner lip) — the classifier
+    // reads faceLandmarks[13] directly for the mouth proximity checks.
+    let classifierFaceLandmarks = faceLandmarks;
+    if (faceLandmarks && faceLandmarks.length >= 468) {
+      classifierFaceLandmarks = [
+        faceLandmarks[4],   // 0  nose tip
+        faceLandmarks[33],  // 1  left inner eye corner
+        faceLandmarks[263], // 2  right inner eye corner
+        faceLandmarks[10],  // 3  forehead
+        faceLandmarks[234], // 4  left cheek
+        faceLandmarks[454], // 5  right cheek
+        faceLandmarks[168], // 6  nose bridge mid
+        faceLandmarks[6],   // 7  nose bridge upper
+        faceLandmarks[197], // 8  nose bridge lower
+        faceLandmarks[195], // 9  nose lower
+        faceLandmarks[5],   // 10 nose upper bridge
+        faceLandmarks[4],   // 11 nose tip dup (keeps centroid stable)
+        faceLandmarks[33],  // 12 left eye dup
+        faceLandmarks[13],  // 13 upper inner lip ← classifier reads this index
+      ];
+    }
+
     // Classify raw instantaneous gesture
     const rawResult = classifyGesture({
       handLandmarksList,
-      faceLandmarks,
+      faceLandmarks: classifierFaceLandmarks,
       poseLandmarks,
       yawDeg,
       pitchDeg,

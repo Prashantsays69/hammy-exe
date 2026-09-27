@@ -52,8 +52,21 @@ export default function Footer({ onSecretClick }) {
         {/* Left Hamster Sticker & zzz... (Desktop flanking / Mobile row) */}
         <div
           className="footer-deco-sticker deco-left"
-          onClick={() => onSecretClick && onSecretClick(5)}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onSecretClick) onSecretClick(5);
+            else soundFX.squeak();
+          }}
           title="Zzz... wake up hammy! 🐹"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (onSecretClick) onSecretClick(5);
+              else soundFX.squeak();
+            }
+          }}
         >
           <span className="deco-bubble">zzz...</span>
           <img
@@ -68,8 +81,21 @@ export default function Footer({ onSecretClick }) {
           {/* Taped scrapbook sticker on top-right of card */}
           <div
             className="card-taped-sticker"
-            onClick={() => onSecretClick && onSecretClick(5)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onSecretClick) onSecretClick(5);
+              else soundFX.squeak();
+            }}
             title="Psst... 🐹"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (onSecretClick) onSecretClick(5);
+                else soundFX.squeak();
+              }
+            }}
           >
             <div className="mini-washi-tape" />
             <img
@@ -112,8 +138,23 @@ export default function Footer({ onSecretClick }) {
           </div>
         </div>
 
-        {/* Right Hamster Sticker & stay silly! ✨ */}
-        <div className="footer-deco-sticker deco-right">
+        {/* Right Hamster Sticker & stay silly! ✨ (Plays Hammy squeak SFX) */}
+        <div
+          className="footer-deco-sticker deco-right"
+          onClick={(e) => {
+            e.stopPropagation();
+            soundFX.squeak();
+          }}
+          title="stay silly! ✨ 🐹"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              soundFX.squeak();
+            }
+          }}
+        >
           <img
             src="/images/thumbs_up_sticker.png"
             alt="Happy hammy"
@@ -147,7 +188,8 @@ export default function Footer({ onSecretClick }) {
           position: absolute;
           cursor: pointer;
           user-select: none;
-          transition: transform 0.15s ease;
+          touch-action: manipulation;
+          transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
           z-index: 2;
         }
 
@@ -157,7 +199,10 @@ export default function Footer({ onSecretClick }) {
           transform: translateY(-50%);
         }
         .deco-left:hover {
-          transform: translateY(calc(-50% - 2px));
+          transform: translateY(calc(-50% - 2px)) scale(1.05);
+        }
+        .deco-left:active {
+          transform: translateY(-50%) scale(0.94);
         }
 
         .deco-right {
@@ -166,7 +211,10 @@ export default function Footer({ onSecretClick }) {
           transform: translateY(-50%);
         }
         .deco-right:hover {
-          transform: translateY(calc(-50% - 2px));
+          transform: translateY(calc(-50% - 2px)) scale(1.05);
+        }
+        .deco-right:active {
+          transform: translateY(-50%) scale(0.94);
         }
 
         .deco-bubble {
@@ -180,6 +228,7 @@ export default function Footer({ onSecretClick }) {
           padding: 2px 7px;
           box-shadow: 1.5px 1.5px 0px #18181b;
           white-space: nowrap;
+          pointer-events: none;
         }
 
         .deco-img {
@@ -213,6 +262,7 @@ export default function Footer({ onSecretClick }) {
           right: 16px;
           cursor: pointer;
           user-select: none;
+          touch-action: manipulation;
           transition: transform 0.15s ease;
           display: flex;
           flex-direction: column;
@@ -220,6 +270,9 @@ export default function Footer({ onSecretClick }) {
         }
         .card-taped-sticker:hover {
           transform: translateY(-2px) scale(1.06);
+        }
+        .card-taped-sticker:active {
+          transform: scale(0.95);
         }
 
         .mini-washi-tape {
@@ -243,6 +296,7 @@ export default function Footer({ onSecretClick }) {
           box-shadow: 1.5px 1.5px 0px #18181b;
           background: #ffffff;
           display: block;
+          pointer-events: none;
         }
 
         .creator-title {
@@ -340,18 +394,29 @@ export default function Footer({ onSecretClick }) {
           user-select: none;
         }
 
-        /* Tablet & Mobile responsive behavior */
+        /* Tablet & Mobile responsive behavior: wrap stickers neatly below card */
         @media (max-width: 780px) {
           .footer-layout-container {
-            flex-direction: column;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
             gap: 12px;
           }
-          .footer-deco-sticker {
-            position: static;
-            transform: none !important;
+          .creator-card {
+            order: 1;
+            width: 100%;
           }
-          .deco-left, .deco-right {
-            display: none !important;
+          .footer-deco-sticker {
+            position: static !important;
+            transform: none !important;
+            order: 2;
+          }
+          .deco-left:hover, .deco-right:hover {
+            transform: translateY(-2px) scale(1.05) !important;
+          }
+          .deco-left:active, .deco-right:active {
+            transform: scale(0.94) !important;
           }
         }
 

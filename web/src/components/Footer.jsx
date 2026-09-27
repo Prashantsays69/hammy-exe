@@ -42,43 +42,44 @@ export default function Footer({ onSecretClick }) {
         background: "var(--pastel-pink)",
         borderTop: "3px solid #18181b",
         width: "100%",
-        marginTop: "40px",
-        padding: "36px 16px 22px",
+        marginTop: "32px",
+        padding: "26px 16px 18px",
         position: "relative",
         boxSizing: "border-box",
       }}
     >
-      <div className="footer-inner-container">
-        {/* Left Playful Hamster Decoration (Desktop/Tablet) */}
+      <div className="footer-layout-container">
+        {/* Left Hamster Sticker & zzz... (Desktop flanking / Mobile row) */}
         <div
-          className="footer-side-deco left-deco"
+          className="footer-deco-sticker deco-left"
           onClick={() => onSecretClick && onSecretClick(5)}
           title="Zzz... wake up hammy! 🐹"
         >
-          <span className="deco-tag">zzz...</span>
+          <span className="deco-bubble">zzz...</span>
           <img
             src="/images/plain_hamster.png"
             alt="Sleeping hammy"
-            className="deco-hamster-img"
+            className="deco-img"
           />
         </div>
 
-        {/* Centered Compact White Creator Card */}
+        {/* Centered Scrapbook Creator Card */}
         <div className="creator-card">
-          {/* Small decorative hamster sticker attached near the top-right edge */}
+          {/* Taped scrapbook sticker on top-right of card */}
           <div
-            className="card-hamster-sticker"
+            className="card-taped-sticker"
             onClick={() => onSecretClick && onSecretClick(5)}
             title="Psst... 🐹"
           >
+            <div className="mini-washi-tape" />
             <img
               src="/images/pajama_hamster.png"
               alt="Hammy"
-              className="sticker-hamster-img"
+              className="taped-sticker-img"
             />
           </div>
 
-          {/* Main line: made by [ Prashant 🐹 ] */}
+          {/* Top Line: made by [ Prashant 🐹 ] */}
           <div className="creator-title">
             <span>made by</span>
             <span className="creator-pill">
@@ -87,12 +88,12 @@ export default function Footer({ onSecretClick }) {
             </span>
           </div>
 
-          {/* Subtitle / Description */}
+          {/* Compact Under-Title Description */}
           <p className="creator-subtitle">
             made with too much caffeine, questionable debugging decisions, and one emotionally unstable hamster
           </p>
 
-          {/* Exactly Three Social Buttons */}
+          {/* Three Compact Social Buttons */}
           <div className="creator-socials">
             {socials.map((s) => (
               <a
@@ -111,79 +112,79 @@ export default function Footer({ onSecretClick }) {
           </div>
         </div>
 
-        {/* Right Playful Hamster Decoration (Desktop/Tablet) */}
-        <div className="footer-side-deco right-deco">
+        {/* Right Hamster Sticker & stay silly! ✨ */}
+        <div className="footer-deco-sticker deco-right">
           <img
             src="/images/thumbs_up_sticker.png"
             alt="Happy hammy"
-            className="deco-hamster-img"
+            className="deco-img"
           />
-          <span className="deco-tag">stay silly! ✨</span>
+          <span className="deco-bubble">stay silly! ✨</span>
         </div>
       </div>
 
-      {/* Small centered copyright/footer line */}
+      {/* Small Understated Copyright Line */}
       <div className="creator-bottom-footer">
-        © 2026 HAMMY.EXE · made with 💖 for the sillies
+        © 2026 HAMMY.EXE · made with 💗 for the sillies
       </div>
 
       <style>{`
-        .footer-inner-container {
-          max-width: 1100px;
+        .footer-layout-container {
+          max-width: 1060px;
           margin: 0 auto;
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
+          min-width: 0;
         }
 
-        .footer-side-deco {
+        /* Decorative Hamster Stickers */
+        .footer-deco-sticker {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
           position: absolute;
           cursor: pointer;
           user-select: none;
           transition: transform 0.15s ease;
-        }
-        .footer-side-deco:hover {
-          transform: translateY(-2px);
+          z-index: 2;
         }
 
-        .left-deco {
+        .deco-left {
           left: 12px;
           top: 50%;
           transform: translateY(-50%);
         }
-        .left-deco:hover {
+        .deco-left:hover {
           transform: translateY(calc(-50% - 2px));
         }
 
-        .right-deco {
+        .deco-right {
           right: 12px;
           top: 50%;
           transform: translateY(-50%);
         }
-        .right-deco:hover {
+        .deco-right:hover {
           transform: translateY(calc(-50% - 2px));
         }
 
-        .deco-tag {
+        .deco-bubble {
           font-family: var(--font-doodle);
           font-size: 13px;
           font-weight: 700;
           color: #18181b;
-          background: rgba(255, 255, 255, 0.85);
+          background: rgba(255, 255, 255, 0.9);
           border: 1.5px solid #18181b;
           border-radius: 8px;
-          padding: 2px 8px;
+          padding: 2px 7px;
           box-shadow: 1.5px 1.5px 0px #18181b;
           white-space: nowrap;
         }
 
-        .deco-hamster-img {
-          width: 42px;
-          height: 42px;
+        .deco-img {
+          width: 38px;
+          height: 38px;
           object-fit: contain;
           filter: drop-shadow(2px 2px 0px rgba(24, 24, 27, 0.2));
           pointer-events: none;
@@ -194,33 +195,50 @@ export default function Footer({ onSecretClick }) {
           position: relative;
           background: #ffffff;
           border: var(--ink-border);
-          border-radius: 20px;
+          border-radius: 18px;
           box-shadow: var(--ink-shadow);
-          padding: 24px 26px 20px;
-          max-width: 440px;
+          padding: 20px 24px 17px;
+          max-width: 420px;
           width: 100%;
           text-align: center;
           margin: 0 auto;
           box-sizing: border-box;
+          z-index: 1;
         }
 
-        .card-hamster-sticker {
+        /* Taped Sticker on Card Edge */
+        .card-taped-sticker {
           position: absolute;
-          top: -16px;
-          right: 18px;
+          top: -14px;
+          right: 16px;
           cursor: pointer;
           user-select: none;
           transition: transform 0.15s ease;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
-        .card-hamster-sticker:hover {
-          transform: translateY(-2px) scale(1.08);
+        .card-taped-sticker:hover {
+          transform: translateY(-2px) scale(1.06);
         }
 
-        .sticker-hamster-img {
-          width: 38px;
-          height: 38px;
+        .mini-washi-tape {
+          width: 28px;
+          height: 9px;
+          background: rgba(254, 240, 138, 0.9);
+          border-left: 1.5px dashed rgba(200, 180, 80, 0.8);
+          border-right: 1.5px dashed rgba(200, 180, 80, 0.8);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+          transform: rotate(-3deg);
+          margin-bottom: -4px;
+          z-index: 2;
+        }
+
+        .taped-sticker-img {
+          width: 35px;
+          height: 35px;
           object-fit: cover;
-          border-radius: 10px;
+          border-radius: 9px;
           border: 1.5px solid #18181b;
           box-shadow: 1.5px 1.5px 0px #18181b;
           background: #ffffff;
@@ -229,14 +247,14 @@ export default function Footer({ onSecretClick }) {
 
         .creator-title {
           font-family: var(--font-display);
-          font-size: 18px;
+          font-size: 17.5px;
           font-weight: 800;
           color: #18181b;
           line-height: 1.2;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 7px;
+          gap: 6px;
         }
 
         .creator-pill {
@@ -247,8 +265,8 @@ export default function Footer({ onSecretClick }) {
           box-shadow: 1.5px 1.5px 0px #18181b;
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          font-size: 15.5px;
+          gap: 4px;
+          font-size: 15px;
           font-weight: 800;
           color: #18181b;
         }
@@ -260,32 +278,32 @@ export default function Footer({ onSecretClick }) {
 
         .creator-subtitle {
           font-family: var(--font-doodle);
-          font-size: 14px;
+          font-size: 13.5px;
           font-weight: 700;
           color: #52525b;
-          margin: 10px auto 16px;
+          margin: 8px auto 14px;
           line-height: 1.35;
-          max-width: 350px;
+          max-width: 340px;
         }
 
         .creator-socials {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
+          gap: 9px;
           flex-wrap: wrap;
         }
 
         .creator-pill-btn {
           font-family: var(--font-display);
-          font-size: 12.5px;
+          font-size: 12px;
           font-weight: 700;
           color: #18181b;
           text-decoration: none;
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 14px;
+          padding: 6px 13px;
           background: #ffffff;
           border: 2px solid #18181b;
           border-radius: 999px;
@@ -314,52 +332,76 @@ export default function Footer({ onSecretClick }) {
 
         .creator-bottom-footer {
           font-family: var(--font-doodle);
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
           color: #18181b;
-          margin-top: 18px;
+          margin-top: 14px;
           text-align: center;
           user-select: none;
         }
 
-        /* Tablet Breakpoint: Hide side decorations to avoid crowding */
-        @media (max-width: 860px) {
-          .footer-side-deco {
+        /* Tablet & Mobile responsive behavior */
+        @media (max-width: 780px) {
+          .footer-layout-container {
+            flex-direction: column;
+            gap: 12px;
+          }
+          .footer-deco-sticker {
+            position: static;
+            transform: none !important;
+          }
+          .deco-left, .deco-right {
             display: none !important;
           }
         }
 
-        /* Mobile Breakpoint: Adaptive padding & spacing */
         @media (max-width: 480px) {
           .hammy-pink-footer {
-            padding: 26px 14px 18px !important;
-            margin-top: 30px !important;
+            padding: 22px 12px 14px !important;
+            margin-top: 24px !important;
           }
           .creator-card {
-            padding: 18px 16px 16px !important;
+            padding: 16px 14px 14px !important;
+            border-radius: 16px !important;
+          }
+          .card-taped-sticker {
+            top: -12px !important;
+            right: 12px !important;
+          }
+          .taped-sticker-img {
+            width: 32px !important;
+            height: 32px !important;
           }
           .creator-title {
             font-size: 16px !important;
-            gap: 5px !important;
+            gap: 4px !important;
           }
           .creator-pill {
             font-size: 14px !important;
             padding: 2px 8px !important;
           }
           .creator-subtitle {
-            font-size: 13px !important;
-            margin: 8px auto 14px !important;
+            font-size: 12.5px !important;
+            margin: 7px auto 12px !important;
+            max-width: 300px !important;
           }
           .creator-socials {
-            gap: 8px !important;
+            gap: 7px !important;
           }
           .creator-pill-btn {
-            font-size: 12px !important;
-            padding: 5px 12px !important;
+            font-size: 11.5px !important;
+            padding: 5px 11px !important;
           }
           .creator-bottom-footer {
-            font-size: 13px !important;
-            margin-top: 14px !important;
+            font-size: 12px !important;
+            margin-top: 12px !important;
+          }
+        }
+
+        @media (max-width: 360px) {
+          .creator-pill-btn {
+            padding: 5px 9px !important;
+            font-size: 11px !important;
           }
         }
       `}</style>

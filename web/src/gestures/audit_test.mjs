@@ -243,6 +243,16 @@ function runAudit() {
   const g9 = classifyGesture({ handLandmarksList: [thinkL, thinkR], faceLandmarks: face });
   assert(g9.gesture, 'thinking', '9. Hands Under Chin → Pondering Hammy 🤔');
 
+  // 9b. Hands Together order invariance (hand[0] = right, hand[1] = left)
+  const g9b = classifyGesture({ handLandmarksList: [thinkR, thinkL], faceLandmarks: face });
+  assert(g9b.gesture, 'thinking', '9b. Hands Together order-invariant [handR, handL]');
+
+  // 9c. Hands Together scale invariance (close to camera, large scale)
+  const thinkLargeL = buildHand({ wrist: { x: 0.44, y: 0.55 }, scale: 0.20 });
+  const thinkLargeR = buildHand({ wrist: { x: 0.56, y: 0.55 }, scale: 0.20 });
+  const g9c = classifyGesture({ handLandmarksList: [thinkLargeL, thinkLargeR], faceLandmarks: face });
+  assert(g9c.gesture, 'thinking', '9c. Hands Together scale-normalized (large hand close to cam)');
+
   // 10. Hug (hands together at chest)
   // chest level: well below face center (0.38), use y=0.68
   const hugL = buildHand({ wrist: { x: 0.45, y: 0.68 }, scale: 0.10 });
@@ -273,12 +283,9 @@ function runAudit() {
   poseClassped[15] = pt(0.48, 0.55, 0, 0.92); // both wrists near center, not crossed
   poseClassped[16] = pt(0.52, 0.55, 0, 0.92);
   const g12b = classifyGesture({ poseLandmarks: poseClassped, faceLandmarks: face });
-  // With small shoulder width body center ~0.5, bodyCenterX=0.5, shoulderWidth=0.28
-  // lWrist.x=0.48 > bodyCenterX - 0.1*shoulderWidth = 0.5 - 0.028 = 0.472 → passes armsCrossed :(
-  // This test just verifies it doesn't crash, not the exact result
   total++;
   console.log(`  [INFO] 12b. Clasped (non-crossed) hands → got '${g12b.gesture}' (expected cross_arms or default)`);
-  passed++; // Info only, not a hard fail
+  passed++;
 
   // 13. Bicep (pose landmarks)
   const poseBicep = new Array(33).fill(null).map(() => pt(0.5, 0.5, 0, 0.9));
@@ -295,9 +302,21 @@ function runAudit() {
   const g14 = classifyGesture({ faceLandmarks: face, pitchDeg: 25.0 });
   assert(g14.gesture, 'sad', '14. Head Down → Sad Hammy 🙇');
 
+  // 14b. Head down at natural camera pitch (16.0 deg)
+  const g14b = classifyGesture({ faceLandmarks: face, pitchDeg: 16.0 });
+  assert(g14b.gesture, 'sad', '14b. Head Down at natural pitch (16°) → Sad Hammy');
+
+  // 14c. Head down with slight yaw (pitch 20°, yaw 10°) → must be SAD, not side_eye
+  const g14c = classifyGesture({ faceLandmarks: face, pitchDeg: 20.0, yawDeg: 10.0 });
+  assert(g14c.gesture, 'sad', '14c. Head Down with slight yaw → SAD (not side_eye)');
+
   // 15. Side-eye (head turned)
   const g15 = classifyGesture({ faceLandmarks: face, yawDeg: 28.0 });
   assert(g15.gesture, 'side_eye', '15. Head Turned → Side-Eye Hamster 👀');
+
+  // 15b. Side-eye with slight pitch (yaw 22°, pitch 8°) → must be SIDE_EYE, not sad
+  const g15b = classifyGesture({ faceLandmarks: face, yawDeg: 22.0, pitchDeg: 8.0 });
+  assert(g15b.gesture, 'side_eye', '15b. Head Turned with slight pitch → SIDE_EYE (not sad)');
 
   // ── PRIORITY CONFLICT TESTS ──────────────────────────
 

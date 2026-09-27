@@ -1,6 +1,6 @@
 import React from "react";
 import { StickerHamster } from "../hamster/art";
-import { soundFX, audioManager } from "../utils/audio";
+import { soundFX } from "../utils/audio";
 
 export default function Hero({ onEnterZone, onSecretClick }) {
   return (
@@ -59,7 +59,6 @@ export default function Hero({ onEnterZone, onSecretClick }) {
         <button
           onClick={() => {
             soundFX.cta();
-            audioManager.startMusicOnInteraction();
             onEnterZone();
           }}
           onMouseEnter={() => soundFX.hover()}

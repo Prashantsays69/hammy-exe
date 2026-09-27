@@ -195,7 +195,6 @@ export default function Header({ activeTab, setActiveTab, onSecretClick }) {
           <button
             onClick={() => {
               soundFX.cta();
-              audioManager.startMusicOnInteraction();
               handleNavClick("cam");
             }}
             onMouseEnter={() => soundFX.hover()}

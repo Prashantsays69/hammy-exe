@@ -84,7 +84,6 @@ const FINGER_SPECS = [
 export function getFingersExtension(landmarks) {
   if (!landmarks || landmarks.length < 21) return [0, 0, 0, 0];
   const wrist = landmarks[0];
-  const scale = getPalmScale(landmarks);
 
   return FINGER_SPECS.map(({ mcp, pip, tip }) => {
     const lMcp = landmarks[mcp];
@@ -450,18 +449,36 @@ export function classifyGesture({
   // "Pointer" = index extended, ALL others curled (including thumb tucked).
   // ─────────────────────────────────────────
   // ─────────────────────────────────────────
-  // PRIORITY 4 — TWO-HAND POSTURES (Shy / Thinking / Hug)
-  // Only when exactly 2 hands visible. Order NOT assumed.
-  // Checked BEFORE single-hand gestures to prevent two hands being stolen by pointer.
+  // PRIORITY 4 — TWO-HAND POSTURES (Shy / Thinking / Hug / Hands Together)
+  // Only when exactly 2 hands visible. Order NOT assumed (hand[0] can be left or right).
+  // All distances normalized by palm scale so camera distance doesn't matter.
   // ─────────────────────────────────────────
   if (detected === 'default' && handLandmarksList.length === 2) {
-    const c1 = landmarksCenter(handLandmarksList[0]);
-    const c2 = landmarksCenter(handLandmarksList[1]);
+    const handA = handLandmarksList[0];
+    const handB = handLandmarksList[1];
+    const c1 = landmarksCenter(handA);
+    const c2 = landmarksCenter(handB);
+    const scaleA = getPalmScale(handA);
+    const scaleB = getPalmScale(handB);
+    const avgScale = (scaleA + scaleB) / 2;
     const handsDist = dist2D(c1, c2);
+    const normHandsDist = handsDist / avgScale;
     const avgCenter = { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 };
     signals.handsDist = handsDist;
 
-    // ── SHY: hands on opposite cheeks at face height ──
+    // Detect if hands are close together / touching (order-independent, normalized by palm scale)
+    let minKeyDist = handsDist;
+    const keyIndices = [0, 5, 8, 9, 12]; // wrist, index MCP, index tip, middle MCP, middle tip
+    for (const i of keyIndices) {
+      for (const j of keyIndices) {
+        const d = dist2D(handA[i], handB[j]);
+        if (d < minKeyDist) minKeyDist = d;
+      }
+    }
+    const normMinDist = minKeyDist / avgScale;
+    const handsAreTogether = normHandsDist < 2.2 || normMinDist < 1.35;
+
+    // ── 1. SHY (HANDS ON CHEEKS): hands separated on opposite cheeks at face height ──
     if (hasFace) {
       const d1 = dist2D(c1, headCenter);
       const d2 = dist2D(c2, headCenter);
@@ -469,34 +486,41 @@ export function classifyGesture({
       const dy2 = Math.abs(c2.y - headCenter.y);
       // Hands on opposite sides of face center
       const onOppositeSides = (c1.x < headCenter.x) !== (c2.x < headCenter.x);
-      // Both near face, at cheek height (above chin, not down at chest)
+      // Both near face, at cheek height (above chin, not down at chest), separated across cheeks
       const atCheekHeight = c1.y < mouthPoint.y + 0.05 && c2.y < mouthPoint.y + 0.05 && dy1 < 0.16 && dy2 < 0.16;
-      if (onOppositeSides && d1 < 0.30 && d2 < 0.30 && atCheekHeight && handsDist > 0.10) {
+      if (onOppositeSides && d1 < 0.30 && d2 < 0.30 && atCheekHeight && normHandsDist > 0.8) {
         detected = 'shy';
         signals.confidence = 94;
       }
     }
 
-    // ── THINKING: hands together near chin/mouth ──
-    if (detected === 'default' && hasFace && handsDist < 0.24) {
+    // ── 2. THINKING (HANDS UNDER CHIN): hands close/touching at chin/mouth ──
+    if (detected === 'default' && hasFace && handsAreTogether) {
       const handsToMouth = dist2D(avgCenter, mouthPoint);
       signals.handsMouthDist = handsToMouth;
-      const belowMouth = avgCenter.y - mouthPoint.y;
-      const lateralOff = Math.abs(avgCenter.x - mouthPoint.x);
-      // Chin is right under mouth: within 0.08 distance and not down at chest
-      if ((handsToMouth < 0.08 || (belowMouth >= -0.02 && belowMouth < 0.08)) && lateralOff < 0.10) {
+      const belowMouth = (avgCenter.y - mouthPoint.y) / avgScale;
+      const lateralOff = Math.abs(avgCenter.x - mouthPoint.x) / avgScale;
+      // Chin is directly under mouth (within 0.9 palm scale vertically and 0.9 laterally)
+      if (belowMouth >= -0.3 && belowMouth < 0.9 && lateralOff < 0.9) {
         detected = 'thinking';
         signals.confidence = 92;
       }
     }
 
-    // ── HUG: hands together at chest below face ──
-    if (detected === 'default' && handsDist < 0.28) {
-      const belowFace = avgCenter.y - headCenter.y;
-      if (belowFace > 0.10) {
+    // ── 3. HUG (HANDS AT CHEST): hands close/touching at chest below face ──
+    if (detected === 'default' && handsAreTogether) {
+      const belowFace = (avgCenter.y - headCenter.y) / avgScale;
+      if (belowFace > 1.0) {
         detected = 'hug';
         signals.confidence = 91;
       }
+    }
+
+    // ── 4. HANDS TOGETHER GENERAL: both hands close/touching anywhere in frame ──
+    // Triggers 'thinking' (the "HANDS TOGETHER" reaction) while preserving SHY/THINKING/HUG priority
+    if (detected === 'default' && handsAreTogether) {
+      detected = 'thinking';
+      signals.confidence = 90;
     }
   }
 
@@ -630,21 +654,30 @@ export function classifyGesture({
   }
 
   // ─────────────────────────────────────────
-  // PRIORITY 8 — HEAD DOWN (Sad Hamster)
-  // pitchDeg is reliable from visionEngine regardless of hasFace being set on
-  // the compact classifier face array. Remove hasFace gate.
+  // PRIORITY 8 — HEAD POSE GESTURES (Sad: Head Down / Side-Eye: Head Turned)
+  // Ensures HEAD DOWN and SIDE-EYE do not cross-trigger!
+  // Works with natural camera distances and angles (pitchDeg > 15°).
   // ─────────────────────────────────────────
-  if (detected === 'default' && pitchDeg > 18.0) {
-    detected = 'sad';
-    signals.confidence = 87;
-  }
+  if (detected === 'default') {
+    const isPitchDown = pitchDeg > 15.0;
+    const isYawTurned = Math.abs(yawDeg) > 17.0;
 
-  // ─────────────────────────────────────────
-  // PRIORITY 9 — HEAD TURNED (Side-Eye Hamster)
-  // ─────────────────────────────────────────
-  if (detected === 'default' && Math.abs(yawDeg) > 20.0) {
-    detected = 'side_eye';
-    signals.confidence = 87;
+    if (isPitchDown && isYawTurned) {
+      // Both angles elevated: classify based on dominant rotation axis
+      if (pitchDeg >= Math.abs(yawDeg)) {
+        detected = 'sad';
+        signals.confidence = 88;
+      } else {
+        detected = 'side_eye';
+        signals.confidence = 88;
+      }
+    } else if (isPitchDown) {
+      detected = 'sad';
+      signals.confidence = 88;
+    } else if (isYawTurned) {
+      detected = 'side_eye';
+      signals.confidence = 88;
+    }
   }
 
   return { gesture: detected, signals, hasFace };

@@ -78,31 +78,68 @@ export class HamsterVisionEngine {
     }
   }
 
-  // Calculate Head Yaw and Pitch from 3D Face landmarks
-  calculateHeadAngles(faceLandmarks) {
-    if (!faceLandmarks || faceLandmarks.length < 468) {
+  // Calculate Head Yaw and Pitch from 3D Face landmarks & transformation matrix
+  calculateHeadAngles(faceLandmarks, faceMatrix) {
+    let yawDeg = 0;
+    let pitchDeg = 0;
+
+    // 1. If facial transformation matrix is available, extract 3D rotation angles
+    if (faceMatrix) {
+      try {
+        const d = faceMatrix.data || faceMatrix;
+        let r02 = 0;
+        let r12 = 0;
+        if (Array.isArray(faceMatrix) && Array.isArray(faceMatrix[0])) {
+          r02 = faceMatrix[0][2];
+          r12 = faceMatrix[1][2];
+        } else if (d && d.length >= 16) {
+          // Column-major: row 0 col 2 = index 8, row 1 col 2 = index 9
+          r02 = d[8] !== undefined ? d[8] : d[2];
+          r12 = d[9] !== undefined ? d[9] : d[6];
+        }
+        if (r02 !== 0 || r12 !== 0) {
+          yawDeg = Math.asin(Math.max(-1, Math.min(1, r02))) * (180 / Math.PI);
+          pitchDeg = Math.asin(Math.max(-1, Math.min(1, -r12))) * (180 / Math.PI);
+          return { yawDeg, pitchDeg };
+        }
+      } catch {
+        // Fall back to landmark-based 3D calculation
+      }
+    }
+
+    if (!faceLandmarks || faceLandmarks.length < 14) {
       return { yawDeg: 0, pitchDeg: 0 };
     }
-    const noseTip = faceLandmarks[4];
-    const leftCheek = faceLandmarks[234];
-    const rightCheek = faceLandmarks[454];
-    const forehead = faceLandmarks[10];
-    const chin = faceLandmarks[152];
 
-    let yawDeg = 0;
+    const noseTip = faceLandmarks[4];
+    const leftCheek = faceLandmarks[234] || faceLandmarks[1];
+    const rightCheek = faceLandmarks[454] || faceLandmarks[2];
+    const forehead = faceLandmarks[10];
+    const chin = faceLandmarks[152] || faceLandmarks[13];
+
+    // YAW: Horizontal offset of nose relative to cheek midpoint (decoupled from pitch)
     if (noseTip && leftCheek && rightCheek) {
+      const midCheekX = (leftCheek.x + rightCheek.x) / 2;
       const faceWidth = Math.abs(rightCheek.x - leftCheek.x) || 0.001;
-      const noseRatio = (noseTip.x - leftCheek.x) / faceWidth;
-      // Centered is ~0.5
-      yawDeg = (noseRatio - 0.5) * 80;
+      const noseOffsetRatio = (noseTip.x - midCheekX) / faceWidth;
+      yawDeg = noseOffsetRatio * 90;
     }
 
-    let pitchDeg = 0;
+    // PITCH: Depth differential between chin and forehead + 2D perspective ratio
     if (noseTip && forehead && chin) {
       const faceHeight = Math.abs(chin.y - forehead.y) || 0.001;
       const noseYRatio = (noseTip.y - forehead.y) / faceHeight;
-      // Centered is ~0.58; when looking down, nose tip drops towards chin
-      pitchDeg = (noseYRatio - 0.58) * 85;
+      // 2D perspective component: when looking down, nose tip drops towards chin
+      const pitch2D = (noseYRatio - 0.56) * 90;
+
+      // 3D depth component (if z coordinates present)
+      let pitch3D = null;
+      if (typeof chin.z === "number" && typeof forehead.z === "number" && (chin.z !== 0 || forehead.z !== 0)) {
+        const dz = chin.z - forehead.z;
+        pitch3D = Math.atan2(dz * 1.5, faceHeight) * (180 / Math.PI);
+      }
+
+      pitchDeg = pitch3D !== null ? (pitch3D * 0.7 + pitch2D * 0.3) : pitch2D;
     }
 
     return { yawDeg, pitchDeg };
@@ -137,17 +174,18 @@ export class HamsterVisionEngine {
       if (this.poseLandmarker) {
         poseResults = this.poseLandmarker.detectForVideo(videoElement, timestamp);
       }
-    } catch (err) {
+    } catch {
       // Frame drop or timestamp error
       return null;
     }
 
     const handLandmarksList = handResults?.landmarks || [];
     const faceLandmarks = faceResults?.faceLandmarks?.[0] || null;
+    const faceMatrix = faceResults?.facialTransformationMatrixes?.[0] || null;
     const faceCount = faceResults?.faceLandmarks?.length || 0;
     const poseLandmarks = poseResults?.landmarks?.[0] || null;
 
-    const { yawDeg, pitchDeg } = this.calculateHeadAngles(faceLandmarks);
+    const { yawDeg, pitchDeg } = this.calculateHeadAngles(faceLandmarks, faceMatrix);
 
     // Build a compact face landmark array using only eye-level and nose landmarks.
     // The full 478-point FaceLandmarker result includes jaw, chin, and neck which

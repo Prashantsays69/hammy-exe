@@ -29,7 +29,7 @@ export default function HammyCam({
   // Handle Starting / Stopping webcam with audio feedback
   const startCamera = async () => {
     soundFX.camStart();
-    audioManager.startMusicOnInteraction();
+    audioManager.startWebcamMusic();
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,6 +50,7 @@ export default function HammyCam({
     } catch (err) {
       console.error("Camera access error:", err);
       soundFX.camError();
+      audioManager.pauseMusicOnCameraFail();
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         setCameraError("bro really said NO 💀 (Camera permission denied)");
       } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {

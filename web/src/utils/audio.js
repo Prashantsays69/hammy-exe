@@ -13,6 +13,7 @@ class HammyAudioManager {
     this.isMusicMuted = false;
     this.isMusicStarted = false;
     this.userDisabledRadio = false;
+    this.userPaused = false;
     this.listeners = new Set();
 
     // Throttling timestamps for spam prevention
@@ -27,10 +28,13 @@ class HammyAudioManager {
       const savedPref = localStorage.getItem("hammy_radio_enabled");
       if (savedPref === "false") {
         this.userDisabledRadio = true;
+        this.userPaused = true;
       }
-    } catch (e) {}
+    } catch {
+      // Storage access blocked or unavailable
+    }
 
-    // Initialize audio element
+    // Initialize audio element (reuse singleton if already in window)
     if (typeof window !== "undefined") {
       this.initAudioElement();
     }
@@ -50,7 +54,9 @@ class HammyAudioManager {
           isMuted: this.isMusicMuted,
           isDisabled: this.userDisabledRadio,
         });
-      } catch (e) {}
+      } catch {
+        // Ignore subscriber errors
+      }
     });
   }
 
@@ -69,11 +75,22 @@ class HammyAudioManager {
 
   initAudioElement() {
     if (this.musicAudio) return;
+
+    if (typeof window !== "undefined" && window.__HAMMY_MUSIC_AUDIO__) {
+      this.musicAudio = window.__HAMMY_MUSIC_AUDIO__;
+      this.isMusicPlaying = !this.musicAudio.paused;
+      return;
+    }
+
     try {
       this.musicAudio = new Audio(RADIO_AUDIO_PATH);
       this.musicAudio.loop = true;
       this.musicAudio.volume = NORMAL_MUSIC_VOLUME;
       this.musicAudio.preload = "auto";
+
+      if (typeof window !== "undefined") {
+        window.__HAMMY_MUSIC_AUDIO__ = this.musicAudio;
+      }
 
       this.musicAudio.addEventListener("play", () => {
         this.isMusicPlaying = true;
@@ -87,7 +104,7 @@ class HammyAudioManager {
 
       this.musicAudio.addEventListener("ended", () => {
         // Fallback seamless loop if browser doesn't loop reliably
-        if (this.musicAudio && !this.userDisabledRadio) {
+        if (this.musicAudio && !this.userDisabledRadio && !this.userPaused) {
           this.musicAudio.currentTime = 0;
           this.musicAudio.play().catch(() => {});
         }
@@ -97,25 +114,52 @@ class HammyAudioManager {
     }
   }
 
-  // Triggered on deliberate user interaction (ENTER THE HAMSTER ZONE, LET'S GO, START WEBCAM)
-  startMusicOnInteraction() {
-    if (this.userDisabledRadio) {
-      // User explicitly turned off radio in localStorage, respect preference
+  // Called when user starts/enables the webcam
+  startWebcamMusic() {
+    // If the user has explicitly paused or disabled radio, respect their preference
+    if (this.userDisabledRadio || this.userPaused) {
       return;
     }
+
     this.initContext();
     if (!this.musicAudio) {
       this.initAudioElement();
     }
-    if (this.musicAudio && !this.isMusicPlaying) {
-      this.musicAudio.volume = NORMAL_MUSIC_VOLUME;
-      this.musicAudio.play().then(() => {
-        this.isMusicStarted = true;
+
+    if (this.musicAudio) {
+      // Prevent duplicate instances or restarting if already playing
+      if (!this.musicAudio.paused) {
         this.isMusicPlaying = true;
-        this.notify();
-      }).catch((e) => {
-        // Autoplay policy or user hasn't clicked yet
-      });
+        return;
+      }
+
+      this.musicAudio.volume = NORMAL_MUSIC_VOLUME;
+      const playPromise = this.musicAudio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            this.isMusicStarted = true;
+            this.isMusicPlaying = true;
+            this.notify();
+          })
+          .catch((err) => {
+            console.warn("Webcam music autoplay prevented:", err);
+          });
+      }
+    }
+  }
+
+  // Alias for backward compatibility
+  startMusicOnInteraction() {
+    this.startWebcamMusic();
+  }
+
+  // Pause music if camera permission was denied or failed to open
+  pauseMusicOnCameraFail() {
+    if (this.musicAudio && !this.musicAudio.paused && !this.isMusicStarted) {
+      this.musicAudio.pause();
+      this.isMusicPlaying = false;
+      this.notify();
     }
   }
 
@@ -126,23 +170,31 @@ class HammyAudioManager {
       this.initAudioElement();
     }
 
-    if (this.isMusicPlaying) {
-      // Turn OFF
+    const isCurrentlyPlaying = this.isMusicPlaying || (this.musicAudio && !this.musicAudio.paused);
+
+    if (isCurrentlyPlaying) {
+      // Turn OFF / PAUSE
       this.userDisabledRadio = true;
+      this.userPaused = true;
       try {
         localStorage.setItem("hammy_radio_enabled", "false");
-      } catch (e) {}
+      } catch {
+        // Storage access blocked or unavailable
+      }
       if (this.musicAudio) {
         this.musicAudio.pause();
       }
       this.isMusicPlaying = false;
       this.notify();
     } else {
-      // Turn ON
+      // Turn ON / RESUME
       this.userDisabledRadio = false;
+      this.userPaused = false;
       try {
         localStorage.setItem("hammy_radio_enabled", "true");
-      } catch (e) {}
+      } catch {
+        // Storage access blocked or unavailable
+      }
       if (this.musicAudio) {
         this.musicAudio.volume = NORMAL_MUSIC_VOLUME;
         this.musicAudio.play().catch(() => {});
@@ -967,8 +1019,17 @@ class HammyAudioManager {
   }
 }
 
-// Global Singleton Instance
-export const audioManager = new HammyAudioManager();
+// Global Singleton Instance (reuse window singleton if available to prevent duplicates)
+let audioManagerInstance = null;
+if (typeof window !== "undefined" && window.__HAMMY_AUDIO_MANAGER__) {
+  audioManagerInstance = window.__HAMMY_AUDIO_MANAGER__;
+} else {
+  audioManagerInstance = new HammyAudioManager();
+  if (typeof window !== "undefined") {
+    window.__HAMMY_AUDIO_MANAGER__ = audioManagerInstance;
+  }
+}
+export const audioManager = audioManagerInstance;
 
 // Backward compatibility bridge for existing soundFX calls
 export const soundFX = {

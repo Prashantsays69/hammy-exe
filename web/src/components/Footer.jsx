@@ -37,93 +37,174 @@ export default function Footer({ onSecretClick }) {
   return (
     <footer
       id="about"
-      className="hammy-about-footer"
+      className="hammy-pink-footer"
       style={{
-        padding: "40px 16px 32px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
+        background: "var(--pastel-pink)",
+        borderTop: "3px solid #18181b",
         width: "100%",
+        marginTop: "40px",
+        padding: "36px 16px 22px",
         position: "relative",
+        boxSizing: "border-box",
       }}
     >
-      {/* Scrapbook Note Creator Card */}
-      <div className="creator-card">
-        {/* Single subtle hamster doodle illustration on card edge (click secret 5) */}
+      <div className="footer-inner-container">
+        {/* Left Playful Hamster Decoration (Desktop/Tablet) */}
         <div
+          className="footer-side-deco left-deco"
           onClick={() => onSecretClick && onSecretClick(5)}
-          title="Psst... 🐹"
-          className="creator-hamster-doodle"
+          title="Zzz... wake up hammy! 🐹"
         >
+          <span className="deco-tag">zzz...</span>
           <img
-            src="/images/pajama_hamster.png"
-            alt="Hammy"
-            style={{
-              width: "36px",
-              height: "36px",
-              objectFit: "cover",
-              borderRadius: "8px",
-              border: "1.5px solid #18181b",
-              boxShadow: "1.5px 1.5px 0px #18181b",
-              display: "block",
-            }}
+            src="/images/plain_hamster.png"
+            alt="Sleeping hammy"
+            className="deco-hamster-img"
           />
         </div>
 
-        {/* Title: made by [ Prashant 🐹 ] */}
-        <div className="creator-title">
-          <span>made by</span>
-          <span className="creator-pill">
-            <span>Prashant</span>
-            <span className="creator-emoji">🐹</span>
-          </span>
+        {/* Centered Compact White Creator Card */}
+        <div className="creator-card">
+          {/* Small decorative hamster sticker attached near the top-right edge */}
+          <div
+            className="card-hamster-sticker"
+            onClick={() => onSecretClick && onSecretClick(5)}
+            title="Psst... 🐹"
+          >
+            <img
+              src="/images/pajama_hamster.png"
+              alt="Hammy"
+              className="sticker-hamster-img"
+            />
+          </div>
+
+          {/* Main line: made by [ Prashant 🐹 ] */}
+          <div className="creator-title">
+            <span>made by</span>
+            <span className="creator-pill">
+              <span>Prashant</span>
+              <span className="creator-emoji">🐹</span>
+            </span>
+          </div>
+
+          {/* Subtitle / Description */}
+          <p className="creator-subtitle">
+            made with too much caffeine, questionable debugging decisions, and one emotionally unstable hamster
+          </p>
+
+          {/* Exactly Three Social Buttons */}
+          <div className="creator-socials">
+            {socials.map((s) => (
+              <a
+                key={s.name}
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="creator-pill-btn"
+                onClick={() => soundFX && soundFX.pop && soundFX.pop()}
+                onMouseEnter={() => soundFX && soundFX.hover && soundFX.hover()}
+              >
+                <span className="creator-btn-icon">{s.icon}</span>
+                <span>{s.name}</span>
+              </a>
+            ))}
+          </div>
         </div>
 
-        {/* Subtitle */}
-        <p className="creator-subtitle">
-          made with too much caffeine, questionable debugging decisions, and one emotionally unstable hamster
-        </p>
-
-        {/* 3 Compact Pill-Shaped Social Buttons */}
-        <div className="creator-socials">
-          {socials.map((s) => (
-            <a
-              key={s.name}
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="creator-pill-btn"
-              onClick={() => soundFX && soundFX.pop && soundFX.pop()}
-              onMouseEnter={() => soundFX && soundFX.hover && soundFX.hover()}
-            >
-              <span className="creator-btn-icon">{s.icon}</span>
-              <span>{s.name}</span>
-            </a>
-          ))}
+        {/* Right Playful Hamster Decoration (Desktop/Tablet) */}
+        <div className="footer-side-deco right-deco">
+          <img
+            src="/images/thumbs_up_sticker.png"
+            alt="Happy hammy"
+            className="deco-hamster-img"
+          />
+          <span className="deco-tag">stay silly! ✨</span>
         </div>
       </div>
 
-      {/* Understated bottom footer */}
+      {/* Small centered copyright/footer line */}
       <div className="creator-bottom-footer">
-        © 2026 HAMMY.EXE · made with 🩷 for the sillies
+        © 2026 HAMMY.EXE · made with 💖 for the sillies
       </div>
 
       <style>{`
+        .footer-inner-container {
+          max-width: 1100px;
+          margin: 0 auto;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .footer-side-deco {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          position: absolute;
+          cursor: pointer;
+          user-select: none;
+          transition: transform 0.15s ease;
+        }
+        .footer-side-deco:hover {
+          transform: translateY(-2px);
+        }
+
+        .left-deco {
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+        .left-deco:hover {
+          transform: translateY(calc(-50% - 2px));
+        }
+
+        .right-deco {
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+        }
+        .right-deco:hover {
+          transform: translateY(calc(-50% - 2px));
+        }
+
+        .deco-tag {
+          font-family: var(--font-doodle);
+          font-size: 13px;
+          font-weight: 700;
+          color: #18181b;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1.5px solid #18181b;
+          border-radius: 8px;
+          padding: 2px 8px;
+          box-shadow: 1.5px 1.5px 0px #18181b;
+          white-space: nowrap;
+        }
+
+        .deco-hamster-img {
+          width: 42px;
+          height: 42px;
+          object-fit: contain;
+          filter: drop-shadow(2px 2px 0px rgba(24, 24, 27, 0.2));
+          pointer-events: none;
+        }
+
+        /* Centered White Creator Card */
         .creator-card {
           position: relative;
           background: #ffffff;
           border: var(--ink-border);
           border-radius: 20px;
           box-shadow: var(--ink-shadow);
-          padding: 24px 28px 20px;
+          padding: 24px 26px 20px;
           max-width: 440px;
           width: 100%;
           text-align: center;
           margin: 0 auto;
+          box-sizing: border-box;
         }
 
-        .creator-hamster-doodle {
+        .card-hamster-sticker {
           position: absolute;
           top: -16px;
           right: 18px;
@@ -131,8 +212,19 @@ export default function Footer({ onSecretClick }) {
           user-select: none;
           transition: transform 0.15s ease;
         }
-        .creator-hamster-doodle:hover {
+        .card-hamster-sticker:hover {
           transform: translateY(-2px) scale(1.08);
+        }
+
+        .sticker-hamster-img {
+          width: 38px;
+          height: 38px;
+          object-fit: cover;
+          border-radius: 10px;
+          border: 1.5px solid #18181b;
+          box-shadow: 1.5px 1.5px 0px #18181b;
+          background: #ffffff;
+          display: block;
         }
 
         .creator-title {
@@ -173,7 +265,7 @@ export default function Footer({ onSecretClick }) {
           color: #52525b;
           margin: 10px auto 16px;
           line-height: 1.35;
-          max-width: 360px;
+          max-width: 350px;
         }
 
         .creator-socials {
@@ -203,7 +295,7 @@ export default function Footer({ onSecretClick }) {
         }
 
         .creator-pill-btn:hover {
-          background: var(--pastel-pink);
+          background: #fff5f8;
           transform: translate(-1px, -1px);
           box-shadow: 3px 3px 0px #18181b;
         }
@@ -222,40 +314,52 @@ export default function Footer({ onSecretClick }) {
 
         .creator-bottom-footer {
           font-family: var(--font-doodle);
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 700;
-          color: #71717a;
-          margin-top: 16px;
+          color: #18181b;
+          margin-top: 18px;
           text-align: center;
           user-select: none;
         }
 
+        /* Tablet Breakpoint: Hide side decorations to avoid crowding */
+        @media (max-width: 860px) {
+          .footer-side-deco {
+            display: none !important;
+          }
+        }
+
+        /* Mobile Breakpoint: Adaptive padding & spacing */
         @media (max-width: 480px) {
+          .hammy-pink-footer {
+            padding: 26px 14px 18px !important;
+            margin-top: 30px !important;
+          }
           .creator-card {
-            padding: 18px 16px 16px;
+            padding: 18px 16px 16px !important;
           }
           .creator-title {
-            font-size: 16px;
-            gap: 5px;
+            font-size: 16px !important;
+            gap: 5px !important;
           }
           .creator-pill {
-            font-size: 14.5px;
-            padding: 2px 8px;
+            font-size: 14px !important;
+            padding: 2px 8px !important;
           }
           .creator-subtitle {
-            font-size: 13px;
-            margin: 8px auto 14px;
+            font-size: 13px !important;
+            margin: 8px auto 14px !important;
           }
           .creator-socials {
-            gap: 8px;
+            gap: 8px !important;
           }
           .creator-pill-btn {
-            font-size: 12px;
-            padding: 5px 12px;
+            font-size: 12px !important;
+            padding: 5px 12px !important;
           }
           .creator-bottom-footer {
-            font-size: 12px;
-            margin-top: 12px;
+            font-size: 13px !important;
+            margin-top: 14px !important;
           }
         }
       `}</style>

@@ -185,8 +185,12 @@ class HamsterGestureDetector:
         wrist = landmarks[0]
         pinky_base = landmarks[17]
 
-        # Thumb: extended if tip-to-pinky_base > IP-to-pinky_base * 1.10
-        thumb_extended = _dist(landmarks[4], pinky_base) > _dist(landmarks[2], pinky_base) * 1.10
+        scale = _dist(landmarks[0], landmarks[9])
+        # Thumb: extended if tip-to-pinky_base > IP-to-pinky_base * 1.08 OR tip-to-MCP > scale * 0.58
+        thumb_extended = (
+            _dist(landmarks[4], pinky_base) > _dist(landmarks[2], pinky_base) * 1.08
+            or _dist(landmarks[4], landmarks[2]) > scale * 0.58
+        ) and _dist(landmarks[4], wrist) > scale * 0.60
         fingers = [1 if thumb_extended else 0]
 
         # Other 4 fingers: tip distance from wrist vs knuckle MCP from wrist
@@ -220,8 +224,15 @@ class HamsterGestureDetector:
 
     @classmethod
     def is_thumb_down(cls, landmarks: List[Any]) -> bool:
-        """Check if thumb is pointing vertically downwards relative to wrist."""
-        return cls.thumb_dy_ratio(landmarks) > 0.35
+        """Check if thumb is pointing vertically downwards relative to wrist and MCP."""
+        scale = _dist(landmarks[0], landmarks[9])
+        if scale < 1e-6:
+            return False
+        thumb_tip = landmarks[4]
+        thumb_mcp = landmarks[2]
+        wrist = landmarks[0]
+        thumb_dy = (thumb_tip.y - thumb_mcp.y) / scale
+        return thumb_dy > 0.18 and (thumb_tip.y > wrist.y - scale * 0.15)
 
     @staticmethod
     def is_pinch_gesture(landmarks: List[Any]) -> Tuple[bool, float]:
@@ -348,7 +359,7 @@ class HamsterGestureDetector:
                 hand_c = _landmarks_center(landmarks)
                 fingers = self.get_fingers_extension(landmarks)
                 shape = self.classify_hand_shape(fingers)
-                if shape in ("fist", "thumbs_up"):
+                if shape == "fist":
                     dy = abs(hand_c[1] - head_center[1])
                     dx = abs(hand_c[0] - head_center[0])
                     if (dy < 0.15) and (0.08 < dx < 0.30):
@@ -412,13 +423,13 @@ class HamsterGestureDetector:
                 if mouth_point is not None:
                     hands_to_mouth = float(np.linalg.norm(avg_center - mouth_point))
                     state.hands_to_mouth = hands_to_mouth
-                    if hands_to_mouth < THINKING_MOUTH_DIST_MAX:
+                    if hands_to_mouth < 0.10:
                         detected = "thinking"
 
                 if detected == "default":
                     below_face = float(avg_center[1] - head_center[1])
                     state.hands_below_face = below_face
-                    if below_face > HUG_BELOW_FACE_MIN:
+                    if below_face > 0.14:
                         detected = "hug"
 
         # =============================================================

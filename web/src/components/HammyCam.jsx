@@ -264,16 +264,17 @@ export default function HammyCam({
               width: "100%",
               maxWidth: "260px",
               flex: 1,
+              minHeight: 0,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               position: "relative",
-              padding: "10px 0"
+              padding: "4px 0"
             }}
           >
             <HamsterArt
               type={currentMeta.id}
-              style={{ width: "100%", maxHeight: "250px" }}
+              style={{ width: "100%", height: "100%", maxHeight: "210px" }}
             />
           </div>
 
@@ -282,18 +283,23 @@ export default function HammyCam({
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "2px"
+            gap: "4px",
+            width: "100%",
+            flexShrink: 0,
+            marginTop: "auto"
           }}>
             <div style={{
               fontFamily: "var(--font-display)",
-              fontSize: "clamp(20px, 2.5vw, 26px)",
+              fontSize: "clamp(18px, 2.3vw, 24px)",
               fontWeight: "900",
               color: currentMeta.color || "#18181b",
               textShadow: "1.5px 1.5px 0px #18181b",
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              textAlign: "center"
+              textAlign: "center",
+              flexWrap: "wrap",
+              justifyContent: "center"
             }}>
               <span>{currentMeta.icon}</span>
               <span>{currentMeta.name}</span>
@@ -301,10 +307,14 @@ export default function HammyCam({
 
             <div style={{
               fontFamily: "var(--font-doodle)",
-              fontSize: "14px",
+              fontSize: "clamp(12px, 1.4vw, 14px)",
               color: "#64748b",
               fontWeight: "700",
-              textAlign: "center"
+              textAlign: "center",
+              lineHeight: 1.35,
+              maxWidth: "100%",
+              wordBreak: "break-word",
+              padding: "0 4px"
             }}>
               {currentMeta.instruction}
             </div>
@@ -538,7 +548,7 @@ export default function HammyCam({
           display: grid;
           grid-template-columns: 1fr 1fr;
           background: #000000;
-          min-height: 350px;
+          min-height: 380px;
         }
         .hammy-reaction-panel {
           background: #ffffff;
@@ -549,8 +559,8 @@ export default function HammyCam({
           align-items: center;
           justify-content: space-between;
           position: relative;
-          min-height: 350px;
-          overflow: hidden;
+          min-height: 380px;
+          box-sizing: border-box;
         }
         .hammy-webcam-panel {
           position: relative;
@@ -559,16 +569,18 @@ export default function HammyCam({
           align-items: center;
           justify-content: center;
           overflow: hidden;
-          min-height: 350px;
+          min-height: 380px;
         }
         @media (max-width: 680px) {
           .hammy-cam-stage {
             grid-template-columns: 1fr !important;
+            min-height: auto !important;
           }
           .hammy-reaction-panel {
             border-right: none !important;
             border-bottom: 3px solid #18181b !important;
-            min-height: 300px !important;
+            min-height: auto !important;
+            padding: 16px 14px 18px !important;
           }
           .hammy-webcam-panel {
             min-height: 280px !important;

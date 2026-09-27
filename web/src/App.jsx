@@ -230,14 +230,12 @@ export default function App() {
         {/* Hammy Cam Dual Panel */}
         <div className="stage-cam-col">
           <HammyCam
-            visionEngine={visionEngineRef.current}
             activeReaction={activeReaction}
             detectionData={detectionData}
             isCameraActive={isCameraActive}
             setIsCameraActive={setIsCameraActive}
             cameraError={cameraError}
             setCameraError={setCameraError}
-            statusMessage={statusMessage}
           />
         </div>
 

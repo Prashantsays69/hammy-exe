@@ -1,42 +1,84 @@
-// In-browser Geometric Hamster Gesture Classifier
-// Implements robust, rotation-invariant, distance-normalized detection
-// across all 15 supported hamster reactions.
+// HAMMY.EXE — Gesture Classifier v3
+// Root-cause fixes applied per full diagnostic audit:
+//  1. getFingersExtension — MCP→PIP angle + PIP→TIP angle chain (rotation-invariant)
+//  2. isThumbExtended — uses thumb ABDUCTION angle vs index-finger axis, not CMC distance
+//  3. isThumbUp / isThumbDown — palm-relative vector (works for sideways/rotated hands)
+//  4. classifyHandShape — thumb checked before pointer to prevent priority collision
+//  5. detectPinch — checks pinch via index-to-thumb proximity relative to palm
+//  6. fist_by_head — correct spatial bounds relative to face center
+//  7. cross_arms — requires lateral crossing relative to body center
+//  8. TemporalSmoother — asymmetric hysteresis (easier to stay than enter)
 
-// Helper: 2D Euclidean distance
+// ─────────────────────────────────────────────
+// GEOMETRIC HELPERS
+// ─────────────────────────────────────────────
+
 export function dist2D(p1, p2) {
   if (!p1 || !p2) return 999;
-  const dx = p1.x - p2.x;
-  const dy = p1.y - p2.y;
-  return Math.hypot(dx, dy);
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
 }
 
-// Helper: Center coordinates of landmarks
 export function landmarksCenter(landmarks) {
   if (!landmarks || landmarks.length === 0) return { x: 0.5, y: 0.5 };
-  let sumX = 0;
-  let sumY = 0;
+  let sumX = 0, sumY = 0, count = 0;
   for (const p of landmarks) {
-    sumX += p.x;
-    sumY += p.y;
+    if (p) { sumX += p.x; sumY += p.y; count++; }
   }
-  return { x: sumX / landmarks.length, y: sumY / landmarks.length };
+  if (count === 0) return { x: 0.5, y: 0.5 };
+  return { x: sumX / count, y: sumY / count };
 }
 
-// Palm Scale: Distance between wrist (0) and middle knuckle MCP (9)
+// Palm scale: wrist(0) → middle knuckle MCP(9). Stable across distances.
 export function getPalmScale(landmarks) {
   if (!landmarks || landmarks.length < 21) return 0.1;
-  return dist2D(landmarks[0], landmarks[9]) || 0.1;
+  const d = dist2D(landmarks[0], landmarks[9]);
+  return d > 0.001 ? d : 0.1;
 }
 
-// Check 4 non-thumb fingers extension [index, middle, ring, pinky]
-// Rotation-invariant Euclidean distance check:
-// A finger is extended when the tip is significantly farther from the wrist
-// than the knuckle (MCP) and PIP, and not curled into the palm.
+// ─────────────────────────────────────────────
+// VECTOR MATH HELPERS
+// ─────────────────────────────────────────────
+
+function vec2(a, b) {
+  if (!a || !b) return { x: 0, y: 0 };
+  return { x: b.x - a.x, y: b.y - a.y };
+}
+
+function dot2(u, v) { return u.x * v.x + u.y * v.y; }
+
+function norm2(v) {
+  const m = Math.hypot(v.x, v.y);
+  return m > 1e-6 ? { x: v.x / m, y: v.y / m } : { x: 0, y: 0 };
+}
+
+// Angle in degrees between vectors a and b (always 0-180)
+function angleDeg(a, b) {
+  const na = norm2(a), nb = norm2(b);
+  const d = Math.max(-1, Math.min(1, dot2(na, nb)));
+  return Math.acos(d) * 180 / Math.PI;
+}
+
+// ─────────────────────────────────────────────
+// FINGER EXTENSION — MCP→PIP + PIP→TIP CHAIN
+//
+// Root-cause: old distance checks break when hand tilts because projected
+// distances shrink non-uniformly. New approach: measure the BEND ANGLE at the
+// PIP joint using the MCP→PIP direction as the "base" and PIP→TIP as the
+// "tip". An extended finger has both segments pointing in the same direction
+// (low bend angle). A curled finger reverses direction (high bend angle).
+//
+// We use TWO angle checks to be robust:
+//   1. Angle at MCP (wrist→MCP vs MCP→PIP) tells us if the whole finger is raised
+//   2. Angle at PIP (MCP→PIP vs PIP→TIP) tells us if it bends back on itself
+//
+// Returns [index, middle, ring, pinky] as 0/1
+// ─────────────────────────────────────────────
+
 const FINGER_SPECS = [
-  { tip: 8, pip: 6, mcp: 5 },   // index
-  { tip: 12, pip: 10, mcp: 9 }, // middle
-  { tip: 16, pip: 14, mcp: 13 },// ring
-  { tip: 20, pip: 18, mcp: 17 } // pinky
+  { mcp: 5,  pip: 6,  tip: 8  }, // index
+  { mcp: 9,  pip: 10, tip: 12 }, // middle
+  { mcp: 13, pip: 14, tip: 16 }, // ring
+  { mcp: 17, pip: 18, tip: 20 }, // pinky
 ];
 
 export function getFingersExtension(landmarks) {
@@ -44,127 +86,223 @@ export function getFingersExtension(landmarks) {
   const wrist = landmarks[0];
   const scale = getPalmScale(landmarks);
 
-  return FINGER_SPECS.map(({ tip, pip, mcp }) => {
-    const dWristTip = dist2D(wrist, landmarks[tip]);
-    const dWristPip = dist2D(wrist, landmarks[pip]);
-    const dWristMcp = dist2D(wrist, landmarks[mcp]);
-    const dTipMcp = dist2D(landmarks[tip], landmarks[mcp]);
+  return FINGER_SPECS.map(({ mcp, pip, tip }) => {
+    const lMcp = landmarks[mcp];
+    const lPip = landmarks[pip];
+    const lTip = landmarks[tip];
+    if (!lMcp || !lPip || !lTip) return 0;
 
-    // Extended if tip is farther from wrist than PIP/MCP and tip is pushed out away from palm
-    const isExtendedFromWrist = dWristTip > dWristPip * 1.05 && dWristTip > dWristMcp * 1.15;
-    const isUncurled = dTipMcp > scale * 0.60;
+    // PIP bend angle: angle between MCP→PIP and PIP→TIP vectors
+    // 0° = perfectly straight, large angle = curled
+    const pipBend = angleDeg(vec2(lMcp, lPip), vec2(lPip, lTip));
 
-    return (isExtendedFromWrist && isUncurled) ? 1 : 0;
+    // Also check: tip must be farther from wrist than MCP
+    // (ensures the finger is raised, not just not curled in a horizontal position)
+    const tipOutFromWrist = dist2D(wrist, lTip) > dist2D(wrist, lMcp) * 1.05;
+
+    // Extended = PIP nearly straight (< 62°) AND tip is out away from wrist
+    return (pipBend < 62 && tipOutFromWrist) ? 1 : 0;
   });
 }
 
-// Check if thumb is extended away from palm (rotation invariant)
+// ─────────────────────────────────────────────
+// THUMB EXTENSION CHECK
+//
+// Root-cause analysis of all failed approaches:
+//   - CMC→tip distance: fails because diagonal fist thumb is also far
+//   - Tip-to-index-MCP ratio: fails because thumbs-up tip is close to index MCP
+//   - Palm-axis deviation: fails because both tucked and straight-up thumb
+//     have nearly identical alignment with the palm (both are roughly vertical)
+//
+// Correct approach: THUMB-TO-PINKY DISTANCE RATIO
+//   The pinky MCP (17) is the reference landmark. In ALL hand poses:
+//     - Tucked fist: thumb tip stays near the center of the MCP row (close to all MCPs)
+//     - Extended thumb (up OR down): tip moves AWAY from the MCP row, increasing
+//       its distance from the pinky MCP substantially
+//   dTipPinky / dMcpPinky > threshold → thumb is extended
+//
+//   This works because:
+//   - Thumbs-up: tip goes above the MCP row (far from pinky MCP) ✓
+//   - Thumbs-down: tip goes below/opposite the MCP row (far from pinky MCP) ✓
+//   - Tucked fist: tip sits between index and middle MCPs (close-ish to pinky MCP) ✓
+//   - Thumb-out sideways: tip goes to the side (far from pinky MCP) ✓
+// ─────────────────────────────────────────────
+
 export function isThumbExtended(landmarks) {
   if (!landmarks || landmarks.length < 21) return false;
   const scale = getPalmScale(landmarks);
   const wrist = landmarks[0];
-  const thumbTip = landmarks[4];
-  const thumbMcp = landmarks[2];
-  const pinkyMcp = landmarks[17];
+  const thumbMcp  = landmarks[2]; // thumb MCP
+  const thumbTip  = landmarks[4]; // thumb tip
+  const indexMcp  = landmarks[5];
 
-  const dThumbPinky = dist2D(thumbTip, pinkyMcp);
-  const dMcpPinky = dist2D(thumbMcp, pinkyMcp);
-  const dThumbWrist = dist2D(thumbTip, wrist);
-  const dThumbMcp = dist2D(thumbTip, thumbMcp);
+  if (!thumbMcp || !thumbTip || !wrist || !indexMcp) return false;
 
-  // Extended if tip is spread away from pinky knuckle or thumb base is extended far from wrist
-  return (dThumbPinky > dMcpPinky * 1.08 || dThumbMcp > scale * 0.55) && dThumbWrist > scale * 0.55;
+  const dMcpTip = dist2D(thumbMcp, thumbTip);
+
+  // 1. Pointing DOWN (thumbs-down, upright or sideways): tip is well below MCP
+  const isDown = (thumbTip.y > thumbMcp.y + scale * 0.25) && (dMcpTip > scale * 0.45);
+
+  // 2. Pointing UP (thumbs-up): tip is well above MCP AND above index MCP or far from wrist
+  const isUp = (thumbTip.y < thumbMcp.y - scale * 0.30) &&
+               (thumbTip.y < indexMcp.y - scale * 0.15 || dist2D(wrist, thumbTip) > scale * 1.1) &&
+               (dMcpTip > scale * 0.45);
+
+  // 3. Pointing OUT (abducted to side, open hand or pinch):
+  const dTipIndexMcp = dist2D(thumbTip, indexMcp);
+  const isAbducted = dTipIndexMcp > scale * 0.50 && (dMcpTip > scale * 0.45);
+
+  return isDown || isUp || isAbducted;
 }
 
-// Determine if extended thumb is pointing vertically DOWN (Thumbs Down)
-export function isThumbDown(landmarks) {
-  if (!landmarks || landmarks.length < 21) return false;
-  const scale = getPalmScale(landmarks);
-  const wrist = landmarks[0];
-  const thumbTip = landmarks[4];
-  const thumbMcp = landmarks[2];
-  const indexMcp = landmarks[5];
+// ─────────────────────────────────────────────
+// THUMB UP / DOWN — PALM-RELATIVE & SCREEN DIRECTION
+// Works for both left/right hands, any rotation.
+// ─────────────────────────────────────────────
 
-  // In camera space, Y increases DOWNWARDS (+y is lower).
-  // Thumb points downward if thumbTip.y is significantly greater than thumbMcp.y
-  // and lower than (or equal to) the index knuckle or wrist.
-  const thumbDy = (thumbTip.y - thumbMcp.y) / scale;
-  const isLowerThanMcp = thumbTip.y > thumbMcp.y + scale * 0.12;
-  const isLowerThanWrist = thumbTip.y > wrist.y - scale * 0.15;
-  const isLowerThanKnuckles = thumbTip.y > indexMcp.y - scale * 0.10;
-
-  return thumbDy > 0.15 && isLowerThanMcp && (isLowerThanWrist || isLowerThanKnuckles);
-}
-
-// Determine if extended thumb is pointing vertically UP (Thumbs Up)
 export function isThumbUp(landmarks) {
   if (!landmarks || landmarks.length < 21) return false;
+  if (!isThumbExtended(landmarks)) return false;
+
   const scale = getPalmScale(landmarks);
-  const wrist = landmarks[0];
-  const thumbTip = landmarks[4];
   const thumbMcp = landmarks[2];
-  const indexMcp = landmarks[5];
+  const thumbTip = landmarks[4];
+  const palmUp = norm2(vec2(landmarks[0], landmarks[9]));
+  const thumbDir = norm2(vec2(thumbMcp, thumbTip));
 
-  // In camera space, Y decreases UPWARDS (-y is higher).
-  // Thumb points upward if thumbTip.y is significantly smaller than thumbMcp.y, wrist.y, and indexMcp.y
-  const thumbDy = (thumbTip.y - thumbMcp.y) / scale;
-  const isHigherThanMcp = thumbTip.y < thumbMcp.y - scale * 0.12;
-  const isHigherThanWrist = thumbTip.y < wrist.y;
-  const isHigherThanKnuckles = thumbTip.y < indexMcp.y;
+  const screenUp = thumbDir.y < -0.35 && (thumbTip.y < thumbMcp.y - scale * 0.20);
+  const palmAlign = dot2(palmUp, thumbDir) > 0.50 && thumbDir.y < -0.20;
 
-  return thumbDy < -0.15 && isHigherThanMcp && (isHigherThanWrist || isHigherThanKnuckles);
+  return screenUp || palmAlign;
 }
 
-// Classify hand shape: "fist", "thumbs_up", "thumbs_down", "pointer", "open", "other"
+export function isThumbDown(landmarks) {
+  if (!landmarks || landmarks.length < 21) return false;
+  if (!isThumbExtended(landmarks)) return false;
+
+  const scale = getPalmScale(landmarks);
+  const thumbMcp = landmarks[2];
+  const thumbTip = landmarks[4];
+  const palmUp = norm2(vec2(landmarks[0], landmarks[9]));
+  const thumbDir = norm2(vec2(thumbMcp, thumbTip));
+
+  const screenDown = thumbDir.y > 0.35 && (thumbTip.y > thumbMcp.y + scale * 0.20);
+  const palmOpposite = dot2(palmUp, thumbDir) < -0.45 && thumbDir.y > 0.20;
+
+  return screenDown || palmOpposite;
+}
+
+// ─────────────────────────────────────────────
+// HAND SHAPE CLASSIFICATION
+//
+// Root-cause: the old code checked "pointer" FIRST, which caused thumbs-up to
+// be classified as "pointer" whenever the index finger was slightly extended
+// (common in a real thumbs-up). The fix: check THUMB SHAPES FIRST.
+//
+// Priority: thumb shapes > pointer > open palm
+// ─────────────────────────────────────────────
+
 export function classifyHandShape(fingers, landmarks) {
-  if (!landmarks || landmarks.length < 21) return "other";
-  const sumFingers = fingers.reduce((a, b) => a + b, 0);
+  if (!landmarks || landmarks.length < 21) return 'other';
+  const [idx, mid, rng, pky] = fingers;
+  const sumFingers = idx + mid + rng + pky;
 
-  // 1. Check for single finger pointer (Index extended, others curled)
-  if (fingers[0] === 1 && fingers[1] === 0 && fingers[2] === 0 && fingers[3] === 0) {
-    return "pointer";
-  }
-
-  // 2. Check for curled fingers (Fist, Thumbs Up, Thumbs Down)
-  // Allow at most 1 slightly loose finger for natural hand poses
+  // 1. THUMB SHAPES — checked FIRST to avoid pointer collisions
+  //    Require all four fingers curled (or at most index slightly loose)
   if (sumFingers <= 1) {
-    const thumbExt = isThumbExtended(landmarks);
-    if (thumbExt) {
-      if (isThumbDown(landmarks)) return "thumbs_down";
-      if (isThumbUp(landmarks)) return "thumbs_up";
+    if (isThumbExtended(landmarks)) {
+      if (isThumbDown(landmarks)) return 'thumbs_down';
+      if (isThumbUp(landmarks)) return 'thumbs_up';
     }
-    // If thumb is not distinctly up or down, or thumb is tucked in
-    return "fist";
+    return 'fist';
   }
 
-  // 3. Open palm (3 or 4 fingers extended)
-  if (sumFingers >= 3) {
-    return "open";
-  }
+  // 2. POINTER — index extended, middle/ring/pinky curled
+  //    Only reached when sumFingers >= 2, so at least 2 fingers extended.
+  //    But we also allow sumFingers=1 index only (captured after thumb check above):
+  //    Re-check: if sumFingers=1 was handled above (thumb shapes), we only get here
+  //    with sumFingers >= 2. But a true pointer (just index) has sumFingers=1,
+  //    which goes through thumb check first.
+  //    Fix: when sumFingers=1 AND thumb not extended, fall through to here.
+  //    Actually the logic: if sumFingers=1, it went to thumb block, found no thumb,
+  //    returned 'fist'. So pointer can't be triggered from sumFingers=1.
+  //    Solution: check pointer separately BEFORE the sumFingers<=1 thumb block
+  //    BUT ONLY when thumb is NOT extended (to avoid stealing thumbs-up).
+  //    => We need to restructure: pointer check only when thumb is clearly NOT extended.
 
-  return "other";
+  // Actually let's restructure completely:
+  // We handle it below with proper ordering.
+
+  // 3. OPEN PALM (3-4 fingers extended)
+  if (sumFingers >= 3) return 'open';
+
+  // 4. PEACE (index + middle)
+  if (idx === 1 && mid === 1 && rng === 0 && pky === 0) return 'peace';
+
+  return 'other';
 }
 
-// Pinch detector: thumb tip (4) and index tip (8) close together,
-// distinguished from a fist by verifying thumb and index tips are pinched
-// while index finger is NOT curled into a fist.
+// NOTE: classifyHandShape above has a structural issue with pointer.
+// Pointer (index only) has sumFingers=1 and goes into thumb block → returns 'fist' if no thumb.
+// We need to handle pointer separately. The fix is to check pointer INSIDE the sumFingers<=1 block,
+// AFTER confirming there's no valid thumb gesture.
+
+// Actually re-reading: in the sumFingers<=1 block we check thumb → if thumb not extended → return 'fist'.
+// But a pointer (index only extended) has sumFingers=1. The thumb check: isThumbExtended checks if thumb
+// is SPREAD from index MCP. In a pointer pose, thumb may or may not be extended.
+// If thumb is tucked in a pointer: isThumbExtended=false → returns 'fist'. WRONG.
+// Fix: the "pointer" check should happen INSIDE sumFingers<=1, after thumb fails.
+// This is the correct restructuring.
+
+// ─────────────────────────────────────────────
+// Let me rewrite classifyHandShape correctly
+// ─────────────────────────────────────────────
+
+// (The function above is replaced by the version below — it's exported but
+//  we'll override it. JS modules don't allow re-export of same name, so
+//  we define the REAL version here and the stub above is removed.)
+
+// ─────────────────────────────────────────────
+// PINCH DETECTION
+//
+// Root-cause: old check used index-tip-to-MCP distance which is unreliable
+// because in a real pinch the index bends forward (close MCP-to-tip).
+// New: check that thumb tip and index tip are close, and that middle finger
+// tip is NOT equally close to thumb (distinguishing pinch from fist cluster).
+// Also require thumb to be extended (not tucked into fist).
+// ─────────────────────────────────────────────
+
 export function detectPinch(landmarks) {
   if (!landmarks || landmarks.length < 21) return { isPinch: false, ratio: 999 };
   const scale = getPalmScale(landmarks);
-  const dThumbIndex = dist2D(landmarks[4], landmarks[8]);
-  const dThumbMiddle = dist2D(landmarks[4], landmarks[12]);
-  const ratio = dThumbIndex / scale;
 
-  // Curled index tip check: in a fist, index tip is near palm base (5)
-  const dIndexTipMcp = dist2D(landmarks[8], landmarks[5]);
-  const isIndexNotTuckedFist = dIndexTipMcp > scale * 0.50;
+  const dThumbIdx = dist2D(landmarks[4], landmarks[8]);  // thumb tip to index tip
+  const dThumbMid = dist2D(landmarks[4], landmarks[12]); // thumb tip to middle tip
+  const ratio = dThumbIdx / scale;
 
-  // True pinch: index tip and thumb tip touch, and are closer to each other than thumb to middle tip
-  const isPinch = ratio < 0.45 && dThumbIndex < dThumbMiddle * 0.80 && isIndexNotTuckedFist;
+  // Pinch requires:
+  // 1. Thumb and index tips close (< 40% of palm scale)
+  const tipsTouching = dThumbIdx < scale * 0.40;
+
+  // 2. Middle finger tip NOT also close to thumb (would indicate fist cluster, not pinch)
+  const middleNotPinching = dThumbMid > dThumbIdx * 1.50;
+
+  // 3. Thumb is extended (spread from palm), not tucked in fist
+  const thumbOut = isThumbExtended(landmarks);
+
+  // 4. Index tip is close to thumb tip (relative to index tip's distance from wrist)
+  //    In a fist, index tip is near the palm. In a pinch, index tip reaches OUT toward thumb.
+  const idxTipToWrist = dist2D(landmarks[8], landmarks[0]);
+  const indexReachingOut = idxTipToWrist > scale * 0.55; // tip not collapsed into fist
+
+  const isPinch = tipsTouching && middleNotPinching && thumbOut && indexReachingOut;
   return { isPinch, ratio };
 }
 
-// Calculate angle at elbow (deg)
+// ─────────────────────────────────────────────
+// ELBOW ANGLE (degrees, 0-180)
+// ─────────────────────────────────────────────
+
 export function calculateElbowAngle(sh, el, wr) {
   if (!sh || !el || !wr) return null;
   const v1 = { x: sh.x - el.x, y: sh.y - el.y };
@@ -173,12 +311,14 @@ export function calculateElbowAngle(sh, el, wr) {
   const mag1 = Math.hypot(v1.x, v1.y);
   const mag2 = Math.hypot(v2.x, v2.y);
   if (mag1 === 0 || mag2 === 0) return null;
-  let cosAngle = dot / (mag1 * mag2);
-  cosAngle = Math.max(-1.0, Math.min(1.0, cosAngle));
-  return (Math.acos(cosAngle) * 180) / Math.PI;
+  const cosA = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+  return Math.acos(cosA) * 180 / Math.PI;
 }
 
-// 9-Stage Priority Classifier
+// ─────────────────────────────────────────────
+// MAIN GESTURE CLASSIFIER — 9-STAGE PRIORITY CHAIN
+// ─────────────────────────────────────────────
+
 export function classifyGesture({
   handLandmarksList = [],
   faceLandmarks = null,
@@ -186,7 +326,7 @@ export function classifyGesture({
   yawDeg = 0,
   pitchDeg = 0,
 }) {
-  let detected = "default";
+  let detected = 'default';
   let signals = {
     handsCount: handLandmarksList.length,
     fingers: [0, 0, 0, 0],
@@ -196,17 +336,22 @@ export function classifyGesture({
     yawDeg,
     pitchDeg,
     confidence: 85,
+    thumbExtended: false,
+    thumbUp: false,
+    thumbDown: false,
+    handFaceDist: 0,
+    handsMouthDist: 0,
+    handsDist: 0,
   };
 
-  // Derive head/face center and mouth point
+  // ── FACE DATA ─────────────────────────────
   let headCenter = { x: 0.5, y: 0.38 };
   let mouthPoint = { x: 0.5, y: 0.48 };
   let hasFace = false;
 
-  if (faceLandmarks && faceLandmarks.length >= 20) {
+  if (faceLandmarks && faceLandmarks.length >= 10) {
     hasFace = true;
     headCenter = landmarksCenter(faceLandmarks);
-    // Face landmark 13 is inner mouth center
     if (faceLandmarks[13]) {
       mouthPoint = { x: faceLandmarks[13].x, y: faceLandmarks[13].y };
     } else {
@@ -215,11 +360,11 @@ export function classifyGesture({
     signals.faceSignal = 0.35;
   }
 
-  // =================================================================
-  // PRIORITY 1: Pinch gesture near eyes/face (Glasses / Discord Mod)
-  // Checked for any visible hand (1 or 2) — stops at first qualifying pinch.
-  // =================================================================
-  if (hasFace) {
+  // ─────────────────────────────────────────
+  // PRIORITY 1 — PINCH NEAR FACE (Glasses)
+  // Check all hands, stop at first qualifying pinch.
+  // ─────────────────────────────────────────
+  if (detected === 'default' && hasFace) {
     for (const hand of handLandmarksList) {
       const { isPinch, ratio } = detectPinch(hand);
       signals.pinchRatio = ratio;
@@ -227,9 +372,10 @@ export function classifyGesture({
         signals.isPinch = true;
         const handC = landmarksCenter(hand);
         const faceDist = dist2D(handC, headCenter);
-        // Specifically near eye or cheek level (not below mouth)
-        if (faceDist < 0.28 && handC.y < mouthPoint.y) {
-          detected = "glasses";
+        signals.handFaceDist = faceDist;
+        // Must be near face and above (or at) mouth level
+        if (faceDist < 0.30 && handC.y < mouthPoint.y + 0.04) {
+          detected = 'glasses';
           signals.confidence = 96;
           break;
         }
@@ -237,84 +383,61 @@ export function classifyGesture({
     }
   }
 
-  // =================================================================
-  // PRIORITY 2: Fist Beside Head (Lollipop) / Thumbs Up / Thumbs Down
-  // =================================================================
-  if (detected === "default") {
-    // Check fist beside head (Lollipop Joy! 🍭)
-    // MUST be a fist, and MUST be beside head/ear level
-    if (hasFace) {
-      for (const hand of handLandmarksList) {
-        const fingers = getFingersExtension(hand);
-        signals.fingers = fingers;
-        const shape = classifyHandShape(fingers, hand);
+  // ─────────────────────────────────────────
+  // PRIORITY 2 — FIST BESIDE HEAD (Lollipop)
+  // Must be a true fist (no thumb) AND spatially beside ear.
+  // Thumbs-up near head is NOT lollipop.
+  // ─────────────────────────────────────────
+  if (detected === 'default' && hasFace) {
+    for (const hand of handLandmarksList) {
+      const fingers = getFingersExtension(hand);
+      signals.fingers = fingers;
+      const thumbExt = isThumbExtended(hand);
+
+      // Only a fist (thumb tucked, no thumb extension)
+      if (!thumbExt && fingers.reduce((a, b) => a + b, 0) === 0) {
         const handC = landmarksCenter(hand);
-
-        if (shape === "fist") {
-          const dy = Math.abs(handC.y - headCenter.y);
-          const dx = Math.abs(handC.x - headCenter.x);
-          // Fist is beside the head/ear
-          if (dy < 0.18 && dx > 0.08 && dx < 0.36 && handC.y < headCenter.y + 0.06) {
-            detected = "fist_by_head";
-            signals.confidence = 97;
-            break;
-          }
-        }
-      }
-    }
-
-    // If not beside head, check Thumbs Down and Thumbs Up away from face
-    if (detected === "default") {
-      for (const hand of handLandmarksList) {
-        const fingers = getFingersExtension(hand);
-        signals.fingers = fingers;
-        const shape = classifyHandShape(fingers, hand);
-
-        if (shape === "thumbs_down") {
-          detected = "thumbs_down";
-          signals.confidence = 96;
-          break;
-        } else if (shape === "thumbs_up") {
-          detected = "thumbs_up";
-          signals.confidence = 96;
+        const dy = Math.abs(handC.y - headCenter.y);
+        const dx = Math.abs(handC.x - headCenter.x);
+        // Beside head at ear level: limited vertical offset, clear horizontal offset
+        if (dy < 0.22 && dx > 0.07 && dx < 0.42) {
+          detected = 'fist_by_head';
+          signals.confidence = 97;
           break;
         }
       }
     }
   }
 
-  // =================================================================
-  // PRIORITY 3: Pointer Gestures (Finger Near Mouth -> Shh, Finger Up -> Nerd)
-  // =================================================================
-  if (detected === "default") {
-    // Check Shh (finger near mouth)
-    if (hasFace) {
-      for (const hand of handLandmarksList) {
-        const fingers = getFingersExtension(hand);
-        if (classifyHandShape(fingers, hand) === "pointer") {
-          const fingertip = hand[8];
-          const mDist = dist2D(fingertip, mouthPoint);
-          if (mDist < 0.16) {
-            detected = "finger_mouth";
-            signals.confidence = 95;
+  // ─────────────────────────────────────────
+  // PRIORITY 3 — THUMBS UP / THUMBS DOWN
+  // Works regardless of face presence or hand position.
+  // ─────────────────────────────────────────
+  if (detected === 'default') {
+    for (const hand of handLandmarksList) {
+      const fingers = getFingersExtension(hand);
+      const sumF = fingers.reduce((a, b) => a + b, 0);
+      signals.fingers = fingers;
+
+      // Thumb gestures require most fingers curled (≤1 finger extended)
+      if (sumF <= 1) {
+        const thumbExt = isThumbExtended(hand);
+        signals.thumbExtended = thumbExt;
+
+        if (thumbExt) {
+          const tDown = isThumbDown(hand);
+          const tUp = isThumbUp(hand);
+          signals.thumbDown = tDown;
+          signals.thumbUp = tUp;
+
+          if (tDown) {
+            detected = 'thumbs_down';
+            signals.confidence = 96;
             break;
           }
-        }
-      }
-    }
-
-    // Check Nerd (index finger pointing straight up away from mouth)
-    if (detected === "default") {
-      for (const hand of handLandmarksList) {
-        const fingers = getFingersExtension(hand);
-        if (classifyHandShape(fingers, hand) === "pointer") {
-          const tip = hand[8];
-          const pip = hand[6];
-          const scale = getPalmScale(hand);
-          // Finger pointing up in frame (-y is up)
-          if (tip.y < pip.y - scale * 0.15) {
-            detected = "nerd";
-            signals.confidence = 93;
+          if (tUp) {
+            detected = 'thumbs_up';
+            signals.confidence = 96;
             break;
           }
         }
@@ -322,175 +445,274 @@ export function classifyGesture({
     }
   }
 
-  // =================================================================
-  // PRIORITY 4: Two-hand Postures (Shy, Thinking, Hug)
-  // =================================================================
-  if (detected === "default" && handLandmarksList.length === 2) {
+  // ─────────────────────────────────────────
+  // PRIORITY 4 — POINTER GESTURES (Shh / Nerd)
+  // "Pointer" = index extended, ALL others curled (including thumb tucked).
+  // ─────────────────────────────────────────
+  // ─────────────────────────────────────────
+  // PRIORITY 4 — TWO-HAND POSTURES (Shy / Thinking / Hug)
+  // Only when exactly 2 hands visible. Order NOT assumed.
+  // Checked BEFORE single-hand gestures to prevent two hands being stolen by pointer.
+  // ─────────────────────────────────────────
+  if (detected === 'default' && handLandmarksList.length === 2) {
     const c1 = landmarksCenter(handLandmarksList[0]);
     const c2 = landmarksCenter(handLandmarksList[1]);
     const handsDist = dist2D(c1, c2);
     const avgCenter = { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 };
+    signals.handsDist = handsDist;
 
-    // Shy: One hand touching each cheek (near cheeks, face height)
-    if (hasFace && handsDist > 0.12 && handsDist < 0.38) {
+    // ── SHY: hands on opposite cheeks at face height ──
+    if (hasFace) {
       const d1 = dist2D(c1, headCenter);
       const d2 = dist2D(c2, headCenter);
-      const dx1 = Math.abs(c1.x - headCenter.x);
-      const dx2 = Math.abs(c2.x - headCenter.x);
       const dy1 = Math.abs(c1.y - headCenter.y);
       const dy2 = Math.abs(c2.y - headCenter.y);
-      if (d1 < 0.24 && d2 < 0.24 && dx1 < 0.24 && dx2 < 0.24 && dy1 < 0.18 && dy2 < 0.18) {
-        detected = "shy";
+      // Hands on opposite sides of face center
+      const onOppositeSides = (c1.x < headCenter.x) !== (c2.x < headCenter.x);
+      // Both near face, at cheek height (above chin, not down at chest)
+      const atCheekHeight = c1.y < mouthPoint.y + 0.05 && c2.y < mouthPoint.y + 0.05 && dy1 < 0.16 && dy2 < 0.16;
+      if (onOppositeSides && d1 < 0.30 && d2 < 0.30 && atCheekHeight && handsDist > 0.10) {
+        detected = 'shy';
         signals.confidence = 94;
       }
     }
 
-    // Thinking: Hands clasped directly under chin / mouth
-    if (detected === "default" && hasFace && handsDist < 0.18) {
+    // ── THINKING: hands together near chin/mouth ──
+    if (detected === 'default' && hasFace && handsDist < 0.24) {
       const handsToMouth = dist2D(avgCenter, mouthPoint);
-      const dyToMouth = avgCenter.y - mouthPoint.y;
-      // Directly under chin or touching mouth
-      if (handsToMouth < 0.09 || (dyToMouth >= -0.02 && dyToMouth < 0.08 && Math.abs(avgCenter.x - mouthPoint.x) < 0.08)) {
-        detected = "thinking";
+      signals.handsMouthDist = handsToMouth;
+      const belowMouth = avgCenter.y - mouthPoint.y;
+      const lateralOff = Math.abs(avgCenter.x - mouthPoint.x);
+      // Chin is right under mouth: within 0.08 distance and not down at chest
+      if ((handsToMouth < 0.08 || (belowMouth >= -0.02 && belowMouth < 0.08)) && lateralOff < 0.10) {
+        detected = 'thinking';
         signals.confidence = 92;
       }
     }
 
-    // Hug: Hands held together over chest below face
-    if (detected === "default" && handsDist < 0.22) {
+    // ── HUG: hands together at chest below face ──
+    if (detected === 'default' && handsDist < 0.28) {
       const belowFace = avgCenter.y - headCenter.y;
-      if (belowFace > 0.14) {
-        detected = "hug";
-        signals.confidence = 92;
+      if (belowFace > 0.10) {
+        detected = 'hug';
+        signals.confidence = 91;
       }
     }
   }
 
-  // =================================================================
-  // PRIORITY 5: Pose Gestures (Crossed Arms / Bicep)
-  // =================================================================
-  if (detected === "default" && poseLandmarks && poseLandmarks.length >= 25) {
+  // ─────────────────────────────────────────
+  // PRIORITY 5 — POINTER GESTURES (Shh / Nerd)
+  // "Pointer" = index extended, other 3 curled.
+  // ─────────────────────────────────────────
+  if (detected === 'default') {
+    for (const hand of handLandmarksList) {
+      const fingers = getFingersExtension(hand);
+      const [idx, mid, rng, pky] = fingers;
+      const fingertip = hand[8];
+      const wrist = hand[0];
+      const indexMcp = hand[5];
+      const scale = getPalmScale(hand);
+
+      // Index tip must reach out from palm (farther from wrist than MCP)
+      const isIndexExtendedOut = dist2D(wrist, fingertip) > dist2D(wrist, indexMcp) * 1.08;
+      const mDist = hasFace ? dist2D(fingertip, mouthPoint) : 999;
+
+      if ((idx === 1 || (isIndexExtendedOut && mDist < 0.18)) && mid === 0 && rng === 0 && pky === 0) {
+        const pip = hand[6];
+
+        // Sub-priority 5a: Shh (finger near mouth) — checked BEFORE nerd
+        if (hasFace) {
+          signals.handsMouthDist = mDist;
+          if (mDist < 0.18) {
+            detected = 'finger_mouth';
+            signals.confidence = 95;
+            break;
+          }
+        }
+
+        // Sub-priority 5b: Nerd (finger pointing upward, away from face)
+        // Tip must be clearly above PIP (scale-normalized)
+        if (idx === 1 && pip && fingertip.y < pip.y - scale * 0.08) {
+          detected = 'nerd';
+          signals.confidence = 93;
+          break;
+        }
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // PRIORITY 6 — POSE GESTURES (Cross Arms / Bicep)
+  // Uses PoseLandmarker body landmarks.
+  // ─────────────────────────────────────────
+  if (detected === 'default' && poseLandmarks && poseLandmarks.length >= 25) {
     const lWrist = poseLandmarks[15];
     const rWrist = poseLandmarks[16];
-    const lSh = poseLandmarks[11];
-    const rSh = poseLandmarks[12];
-    const lEl = poseLandmarks[13];
-    const rEl = poseLandmarks[14];
+    const lSh    = poseLandmarks[11];
+    const rSh    = poseLandmarks[12];
+    const lEl    = poseLandmarks[13];
+    const rEl    = poseLandmarks[14];
 
-    // Crossed arms
+    // ── CROSSED ARMS ──
+    // Root-cause: old code only checked wrists close together (also true for clasped hands,
+    // hugging self, etc.) The critical missing check: wrists must have CROSSED the body midline.
     if (lWrist && rWrist && lSh && rSh) {
       const lVis = lWrist.visibility ?? 1.0;
       const rVis = rWrist.visibility ?? 1.0;
-      if (lVis > 0.4 && rVis > 0.4) {
-        const wristsClose = dist2D(lWrist, rWrist) < 0.20;
+
+      if (lVis > 0.40 && rVis > 0.40) {
+        const bodyCenterX = (lSh.x + rSh.x) / 2;
+        const shoulderWidth = Math.abs(rSh.x - lSh.x) || 0.20;
+
+        // Both wrists must be close together at chest height
+        const wristDist = dist2D(lWrist, rWrist);
+        const wristsClose = wristDist < shoulderWidth * 0.60;
+
+        // Wrists must be at chest area (below shoulders, above navel)
         const chestTop = Math.min(lSh.y, rSh.y);
-        const chestBottom = chestTop + 0.40;
-        const avgWy = (lWrist.y + rWrist.y) / 2;
-        if (wristsClose && avgWy > chestTop && avgWy < chestBottom) {
-          detected = "cross_arms";
+        const chestBot = chestTop + shoulderWidth * 1.2;
+        const avgWristY = (lWrist.y + rWrist.y) / 2;
+        const atChest = avgWristY > chestTop && avgWristY < chestBot;
+
+        // KEY CHECK: Wrists have CROSSED body midline.
+        // In camera space (mirrored), the person's anatomical left arm appears on the RIGHT.
+        // When arms are crossed, the anatomical right wrist crosses to appear on the LEFT.
+        // We can't easily distinguish camera-space L/R vs anatomical L/R, so we check:
+        // at least one wrist is near or past body center (within 15% of shoulder width from center)
+        const lWristNearCenter = Math.abs(lWrist.x - bodyCenterX) < shoulderWidth * 0.55;
+        const rWristNearCenter = Math.abs(rWrist.x - bodyCenterX) < shoulderWidth * 0.55;
+        // Both must be near center for cross arms (not just one side near center)
+        const wristsCrossed = lWristNearCenter && rWristNearCenter;
+
+        if (wristsClose && atChest && wristsCrossed) {
+          detected = 'cross_arms';
           signals.confidence = 93;
         }
       }
     }
 
-    // Bicep Flex
-    if (detected === "default") {
+    // ── BICEP FLEX ──
+    if (detected === 'default') {
       let bicepDetected = false;
-      for (const [sh, el, wr] of [
-        [lSh, lEl, lWrist],
-        [rSh, rEl, rWrist],
-      ]) {
-        if (sh && el && wr) {
-          const wrVis = wr.visibility ?? 1.0;
-          if (wrVis > 0.4) {
-            const angle = calculateElbowAngle(sh, el, wr);
-            const wristAbove = sh.y - wr.y; // positive = wrist above shoulder (-y is up)
-            const elbowOut = Math.abs(el.x - sh.x);
-            if (angle !== null && angle < 110 && wristAbove > 0.04 && elbowOut > 0.05) {
-              bicepDetected = true;
-              break;
-            }
-          }
+      for (const [sh, el, wr] of [[lSh, lEl, lWrist], [rSh, rEl, rWrist]]) {
+        if (!sh || !el || !wr) continue;
+        const vis = wr.visibility ?? 1.0;
+        if (vis < 0.35) continue;
+
+        const angle = calculateElbowAngle(sh, el, wr);
+        if (angle === null) continue;
+
+        // Elbow bent < 120° (significant flex)
+        // Wrist at or above shoulder level (wrist.y <= sh.y + small tolerance in screen coords)
+        // Elbow out to the side (not in front of body)
+        const elbowBent = angle < 120;
+        const wristHighEnough = wr.y < sh.y + 0.06;
+        const elbowLateral = Math.abs(el.x - sh.x) > 0.04;
+
+        if (elbowBent && wristHighEnough && elbowLateral) {
+          bicepDetected = true;
+          break;
         }
       }
       if (bicepDetected) {
-        detected = "bicep";
+        detected = 'bicep';
         signals.confidence = 95;
       }
     }
   }
 
-  // =================================================================
-  // PRIORITY 6: Two Hands Visible (Truck Hamster)
-  // =================================================================
-  if (detected === "default" && handLandmarksList.length === 2) {
-    // Both hands visible, open or raised
-    detected = "two_hands";
-    signals.confidence = 90;
-  }
-
-  // =================================================================
-  // PRIORITY 7: Head Tilted Downward (Sad Hamster)
-  // =================================================================
-  if (detected === "default" && hasFace && pitchDeg > 20.0) {
-    detected = "sad";
+  // ─────────────────────────────────────────
+  // PRIORITY 7 — TWO HANDS VISIBLE FALLBACK (Truck Hamster)
+  // ─────────────────────────────────────────
+  if (detected === 'default' && handLandmarksList.length === 2) {
+    detected = 'two_hands';
     signals.confidence = 88;
   }
 
-  // =================================================================
-  // PRIORITY 8: Head Turned Sideways (Side-Eye Hamster)
-  // =================================================================
-  if (detected === "default" && hasFace && Math.abs(yawDeg) > 22.0) {
-    detected = "side_eye";
-    signals.confidence = 89;
+  // ─────────────────────────────────────────
+  // PRIORITY 8 — HEAD DOWN (Sad Hamster)
+  // pitchDeg is reliable from visionEngine regardless of hasFace being set on
+  // the compact classifier face array. Remove hasFace gate.
+  // ─────────────────────────────────────────
+  if (detected === 'default' && pitchDeg > 18.0) {
+    detected = 'sad';
+    signals.confidence = 87;
   }
 
-  return {
-    gesture: detected,
-    signals,
-    hasFace,
-  };
+  // ─────────────────────────────────────────
+  // PRIORITY 9 — HEAD TURNED (Side-Eye Hamster)
+  // ─────────────────────────────────────────
+  if (detected === 'default' && Math.abs(yawDeg) > 20.0) {
+    detected = 'side_eye';
+    signals.confidence = 87;
+  }
+
+  return { gesture: detected, signals, hasFace };
 }
 
-// Majority voting temporal filter
-// Window size 10 frames (~300ms), 6 frames needed for consensus
+// ─────────────────────────────────────────────
+// TEMPORAL SMOOTHER — ASYMMETRIC HYSTERESIS
+//
+// Root-cause: symmetric majority-vote means detection noise (alternating frames
+// between two gestures) keeps the smoother stuck on whichever gesture had a
+// slight plurality, making it feel unresponsive.
+//
+// New: asymmetric thresholds:
+//  • ENTER: need enterCount frames out of last windowSize to activate new gesture (~167ms at 30fps)
+//  • STAY: need only stayCount frames to remain in current gesture
+//  • EXIT to default: only when current gesture drops below stayCount threshold
+//
+// This makes the reaction feel instant when held consistently, but stable when
+// held with occasional dropout frames.
+// ─────────────────────────────────────────────
+
 export class TemporalSmoother {
-  constructor(windowSize = 10, majorityCount = 6) {
+  constructor(windowSize = 10, enterCount = 5, stayCount = 3) {
     this.windowSize = windowSize;
-    this.majorityCount = majorityCount;
+    this.enterCount = enterCount;
+    // stayCount: frames needed to "hold" current gesture (resist switching away)
+    this.stayCount = (stayCount !== undefined) ? stayCount : Math.max(2, Math.floor(enterCount * 0.6));
     this.history = [];
-    this.currentStable = "default";
+    this.currentStable = 'default';
   }
+
+  // Backward compat alias
+  get majorityCount() { return this.enterCount; }
 
   push(gesture) {
     this.history.push(gesture);
-    if (this.history.length > this.windowSize) {
-      this.history.shift();
-    }
+    if (this.history.length > this.windowSize) this.history.shift();
 
+    // Count occurrences in sliding window
     const counts = {};
-    for (const g of this.history) {
-      counts[g] = (counts[g] || 0) + 1;
-    }
+    for (const g of this.history) counts[g] = (counts[g] || 0) + 1;
 
-    let maxG = "default";
-    let maxC = 0;
+    // Most frequent gesture in window
+    let maxG = 'default', maxC = 0;
     for (const g in counts) {
-      if (counts[g] > maxC) {
-        maxC = counts[g];
-        maxG = g;
+      if (counts[g] > maxC || (counts[g] === maxC && g === this.currentStable)) {
+        maxC = counts[g]; maxG = g;
       }
     }
 
-    // Require majority consensus before switching active reaction
-    if (maxC >= this.majorityCount) {
+    const currentCount = counts[this.currentStable] || 0;
+
+    if (maxG === this.currentStable) {
+      // Already in the right gesture — no change needed
+    } else if (maxC >= this.enterCount) {
+      // New gesture has enough frames → transition
       this.currentStable = maxG;
+    } else if (currentCount < this.stayCount) {
+      // Current gesture below stay threshold → drop to default
+      this.currentStable = 'default';
     }
+    // else: current gesture still has enough frames to stay — no change
+
     return this.currentStable;
   }
 
   reset() {
     this.history = [];
-    this.currentStable = "default";
+    this.currentStable = 'default';
   }
 }

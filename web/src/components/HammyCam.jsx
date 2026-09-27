@@ -2,17 +2,15 @@ import React, { useRef, useEffect, useState } from "react";
 import { HamsterArt } from "../hamster/art";
 import { REACTIONS } from "../hamster/reactions";
 import { soundFX, audioManager } from "../utils/audio";
-import { Camera, RefreshCw, Eye, EyeOff, Sparkles, Image as ImageIcon } from "lucide-react";
+import { Camera, RefreshCw, Eye, EyeOff, Bug } from "lucide-react";
 
 export default function HammyCam({
-  visionEngine,
   activeReaction,
   detectionData,
   isCameraActive,
   setIsCameraActive,
   cameraError,
   setCameraError,
-  statusMessage,
 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -20,7 +18,7 @@ export default function HammyCam({
 
   const [mirrorVideo, setMirrorVideo] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(true);
-  const [showMemePhoto, setShowMemePhoto] = useState(false);
+  const [showDebug, setShowDebug] = useState(true);
   const [reactionAnimKey, setReactionAnimKey] = useState(0);
 
   // Trigger bounce animation whenever stable gesture changes
@@ -381,8 +379,8 @@ export default function HammyCam({
             </div>
           )}
 
-          {/* Yellow Telemetry HUD Overlay (Top-Left of Video) */}
-          {isCameraActive && (
+          {/* Developer Debug Telemetry HUD Overlay (Top-Left of Video) */}
+          {isCameraActive && showDebug && (
             <div style={{
               position: "absolute",
               top: "14px",
@@ -393,27 +391,31 @@ export default function HammyCam({
               lineHeight: 1.5,
               textShadow: "1px 1px 2px rgba(0,0,0,0.9)",
               pointerEvents: "none",
-              background: "rgba(0, 0, 0, 0.4)",
-              padding: "6px 10px",
+              background: "rgba(0, 0, 0, 0.65)",
+              padding: "8px 12px",
               borderRadius: "8px",
-              backdropFilter: "blur(2px)",
-              border: "1px solid rgba(254, 240, 138, 0.3)"
+              backdropFilter: "blur(4px)",
+              border: "1px solid rgba(254, 240, 138, 0.4)",
+              zIndex: 10,
+              maxWidth: "320px"
             }}>
-              <div>FPS: {(detectionData?.fps || 0).toFixed(1)}</div>
-              <div>
-                HEAD TRACKING: Yaw: {detectionData?.yawDeg ? (detectionData.yawDeg > 0 ? "+" : "") + detectionData.yawDeg.toFixed(1) + "°" : "0.0°"} | Pitch: {detectionData?.pitchDeg ? (detectionData.pitchDeg > 0 ? "+" : "") + detectionData.pitchDeg.toFixed(1) + "°" : "0.0°"}
+              <div style={{ fontWeight: "700", color: "#67e8f9", marginBottom: "2px" }}>
+                HAMMY.EXE VISION DEBUG
               </div>
               <div>
-                HANDS Count: {detectionData?.handCount || 0} | Fingers: [{detectionData?.signals?.fingers?.join(", ") || "0, 0, 0, 0"}]
+                GESTURE: <span style={{ color: "#a7f3d0" }}>{detectionData?.rawGesture || "none"}</span> → <span style={{ color: "#f472b6", fontWeight: "700" }}>{detectionData?.stableGesture || "default"}</span>
               </div>
               <div>
-                PINCH GESTURE: {detectionData?.signals?.isPinch ? "True" : "False"} (ratio {(detectionData?.signals?.pinchRatio || 0).toFixed(2)})
+                CONFIDENCE: {detectionData?.confidence || 0}% | FPS: {(detectionData?.fps || 0).toFixed(1)}
               </div>
               <div>
-                SIGNALS: Face: {(detectionData?.signals?.faceSignal || 0).toFixed(2)}
+                FINGERS: [{detectionData?.signals?.fingers?.join(", ") || "0, 0, 0, 0"}] | THUMB: {detectionData?.signals?.thumbExtended ? (detectionData?.signals?.thumbUp ? "UP" : detectionData?.signals?.thumbDown ? "DOWN" : "EXT") : "TUCKED"}
               </div>
               <div>
-                DETECTOR: Raw "{detectionData?.rawGesture || 'none'}" -&gt; "{detectionData?.stableGesture || 'default'}"
+                HANDS: {detectionData?.handCount || 0} | PINCH: {detectionData?.signals?.isPinch ? "Yes" : "No"} (ratio {(detectionData?.signals?.pinchRatio || 0).toFixed(2)})
+              </div>
+              <div>
+                HEAD: Yaw {detectionData?.yawDeg ? (detectionData.yawDeg > 0 ? "+" : "") + detectionData.yawDeg.toFixed(1) + "°" : "0.0°"} | Pitch {detectionData?.pitchDeg ? (detectionData.pitchDeg > 0 ? "+" : "") + detectionData.pitchDeg.toFixed(1) + "°" : "0.0°"}
               </div>
             </div>
           )}
@@ -491,6 +493,24 @@ export default function HammyCam({
                 >
                   {showSkeleton ? <Eye size={13} /> : <EyeOff size={13} />}
                   <span>Skeleton</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundFX.pop();
+                    setShowDebug(!showDebug);
+                  }}
+                  onMouseEnter={() => soundFX.hover()}
+                  className="comic-btn"
+                  style={{
+                    background: showDebug ? "#fef08a" : "rgba(255,255,255,0.9)",
+                    padding: "4px 10px",
+                    fontSize: "12px",
+                  }}
+                  title="Toggle Developer Debug HUD"
+                >
+                  <Bug size={13} />
+                  <span>Debug</span>
                 </button>
               </div>
 

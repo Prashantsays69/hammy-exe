@@ -1,0 +1,245 @@
+/* HAMMY.EXE Design System & Aesthetics */
+
+:root {
+  --bg-cream: #faf5eb;
+  --bg-cream-dark: #f2e9d8;
+  --pastel-pink: #ffb8d1;
+  --pastel-pink-soft: #ffe4ee;
+  --pastel-pink-deep: #ff6599;
+  --pastel-yellow: #fef08a;
+  --pastel-yellow-soft: #fffbeb;
+  --pastel-lavender: #e9d5ff;
+  --pastel-lavender-soft: #f5f0ff;
+  --pastel-mint: #bbf7d0;
+  --pastel-mint-soft: #f0fdf4;
+  --pastel-blue: #bae6fd;
+  --ink-black: #18181b;
+  --ink-border: 2.5px solid #18181b;
+  --ink-shadow: 3.5px 3.5px 0px #18181b;
+  --ink-shadow-sm: 2px 2px 0px #18181b;
+  --ink-shadow-lg: 5px 5px 0px #18181b;
+  --ink-shadow-active: 1px 1px 0px #18181b;
+
+  --font-display: 'Fredoka', -apple-system, sans-serif;
+  --font-doodle: 'Gaegu', 'Patrick Hand', cursive, sans-serif;
+  --font-hand: 'Patrick Hand', cursive, sans-serif;
+  --font-code: 'Fira Code', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  background-color: var(--bg-cream);
+  color: var(--ink-black);
+  font-family: var(--font-display);
+  position: relative;
+}
+
+body {
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(#eeddbb 1px, transparent 1px),
+    radial-gradient(#eeddbb 1px, var(--bg-cream) 1px);
+  background-size: 32px 32px;
+  background-position: 0 0, 16px 16px;
+}
+
+/* Custom playful scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-cream-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--pastel-pink);
+  border: 2px solid var(--ink-black);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pastel-pink-deep);
+}
+
+/* Hide scrollbar utility for mobile swipeable carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Chunky comic style elements */
+.comic-card {
+  background: #ffffff;
+  border: var(--ink-border);
+  border-radius: 18px;
+  box-shadow: var(--ink-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  min-width: 0;
+}
+
+@media (hover: hover) {
+  .comic-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--ink-shadow-lg);
+  }
+}
+
+.comic-btn {
+  font-family: var(--font-display);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: var(--ink-border);
+  border-radius: 14px;
+  box-shadow: var(--ink-shadow);
+  cursor: pointer;
+  padding: 10px 18px;
+  min-height: 42px;
+  transition: all 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-decoration: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+@media (hover: hover) {
+  .comic-btn:hover {
+    transform: translate(-1px, -2px);
+    box-shadow: var(--ink-shadow-lg);
+  }
+}
+
+.comic-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--ink-shadow-active);
+}
+
+/* Washi tape on polaroids */
+.washi-tape {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-1deg);
+  width: 50px;
+  height: 15px;
+  background: rgba(254, 240, 138, 0.9);
+  border-left: 2px dashed rgba(200, 180, 80, 0.7);
+  border-right: 2px dashed rgba(200, 180, 80, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Retro CRT terminal window */
+.retro-terminal {
+  background: #15101e;
+  border: 3px solid #18181b;
+  border-radius: 14px;
+  box-shadow: var(--ink-shadow);
+  color: #a7f3d0;
+  font-family: var(--font-code);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.terminal-header {
+  background: #c084fc;
+  border-bottom: 2.5px solid #18181b;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 13px;
+  color: #18181b;
+  user-select: none;
+}
+
+.terminal-body {
+  padding: 12px 14px;
+  line-height: 1.6;
+  font-size: 12px;
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+  word-break: break-word;
+}
+
+/* Micro-animations */
+@keyframes floatWobble {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(2deg);
+  }
+}
+
+@keyframes popReaction {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.04) rotate(-1deg);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 101, 153, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px rgba(255, 101, 153, 0.65);
+  }
+}
+
+.animate-wobble {
+  animation: floatWobble 3.5s ease-in-out infinite;
+}
+
+.animate-pop {
+  animation: popReaction 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 1.8s infinite;
+}
+
+/* Responsive utilities */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --ink-shadow: 2.5px 2.5px 0px #18181b;
+    --ink-shadow-lg: 3.5px 3.5px 0px #18181b;
+  }
+
+  .comic-card {
+    border-radius: 14px;
+  }
+
+  .comic-btn {
+    min-height: 44px; /* Accessible touch target */
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
